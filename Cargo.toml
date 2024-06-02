@@ -1,0 +1,21 @@
+[package]
+name = "bdk_kyoto"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+tokio = { version = "1.0", default-features = false, features = ["full"] }
+
+[dependencies.bdk_chain]
+path = "../bdk/crates/chain"
+
+[dependencies.bdk_wallet]
+path = "../bdk/crates/wallet"
+
+[dependencies.kyoto]
+#git = "https://github.com/rustaceanrob/kyoto"
+path = "../kyoto"
+
+[[example]]
+name = "signet"
