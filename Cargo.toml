@@ -4,18 +4,20 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0"
 tokio = { version = "1.0", default-features = false, features = ["full"] }
+tracing = "0.1"
 
 [dependencies.bdk_chain]
 path = "../bdk/crates/chain"
 
-[dependencies.bdk_wallet]
-path = "../bdk/crates/wallet"
-
 [dependencies.kyoto]
 #git = "https://github.com/rustaceanrob/kyoto"
 path = "../kyoto"
+
+[dev-dependencies]
+anyhow = "1.0"
+bdk_wallet = { path = "../bdk/crates/wallet" }
+tracing-subscriber = "0.3"
 
 [[example]]
 name = "signet"

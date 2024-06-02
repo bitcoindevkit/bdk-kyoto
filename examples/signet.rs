@@ -50,6 +50,9 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    let subscriber = tracing_subscriber::FmtSubscriber::new();
+    tracing::subscriber::set_global_default(subscriber).unwrap();
+
     let peer = IpAddr::V4(Ipv4Addr::new(170, 75, 163, 219));
     let peer_2 = IpAddr::V4(Ipv4Addr::new(23, 137, 57, 100));
 

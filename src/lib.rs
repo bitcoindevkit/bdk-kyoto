@@ -71,8 +71,8 @@ where
 {
     /// Sync.
     pub async fn sync(&mut self) -> Option<Update<K>> {
-        println!("Syncing..");
-        
+        tracing::info!("Syncing..");
+
         let (mut sender, receiver) = self.inner.split();
 
         while let Some(message) = receiver.recv().await {
@@ -84,10 +84,7 @@ where
                 NodeMessage::Transaction(tx) => {
                     if let Some(height) = tx.height {
                         self.blocks.insert(height as u32, convert_hash(&tx.hash));
-                    } else {
-                        println!("Warning: missing block height for matching tx");
                     }
-                    println!("Inserting tx");
                     let _ = self.graph.insert_tx(convert_tx(&tx.transaction));
 
                     // TODO: insert graph anchors?
@@ -98,14 +95,16 @@ where
 
                     self.blocks
                         .insert(tip.height as u32, convert_hash(&tip.hash));
-                    println!("Synced");
-                    sender.shutdown().await.unwrap();
+                    tracing::info!("Synced to tip {} {:?}", tip.height, tip.hash);
                     break;
                 }
-                NodeMessage::Dialog(_) => {}
-                NodeMessage::Warning(_) => {}
+                NodeMessage::Dialog(s) => tracing::info!("{s}"),
+                NodeMessage::Warning(s) => tracing::warn!("{s}"),
             }
         }
+
+        tracing::info!("Shutting down");
+        sender.shutdown().await.unwrap();
 
         self.as_update()
     }
@@ -136,7 +135,9 @@ where
     }
 
     /// Shutdown
-    pub fn shutdown(&mut self) { todo!() }
+    pub fn shutdown(&mut self) {
+        todo!()
+    }
 }
 
 /// Update.
