@@ -9,8 +9,6 @@ use bdk_chain::keychain::KeychainTxOutIndex;
 use bdk_chain::local_chain::LocalChain;
 use bdk_chain::miniscript::Descriptor;
 use bdk_chain::{bitcoin, ConfirmationTimeHeightAnchor, IndexedTxGraph};
-use bdk_kyoto::Client;
-use bdk_wallet::{KeychainKind, Wallet};
 
 use kyoto::chain::checkpoints::HeaderCheckpoint;
 use kyoto::node::builder::NodeBuilder;
@@ -33,19 +31,18 @@ async fn main() -> anyhow::Result<()> {
         chain
     };
 
-    let mut graph: IndexedTxGraph<ConfirmationTimeHeightAnchor, KeychainTxOutIndex<usize>> = {
+    let mut graph = IndexedTxGraph::new({
         let mut index = KeychainTxOutIndex::default();
-        let _ = index.insert_descriptor(0, descriptor);
+        let _ = index.insert_descriptor(0usize, descriptor);
         let _ = index.insert_descriptor(1, change_descriptor);
-        IndexedTxGraph::new(index)
-    };
+        index
+    });
 
     let mut addresses: Vec<Address> = vec![];
     for keychain in 0usize..=1 {
-        let (mut iter, _) = graph.index.reveal_to_target(&keychain, 9).unwrap();
-        for (idx, spk) in iter {
-            let script_bytes = spk.to_bytes();
-            let spk = ScriptBuf::from_bytes(script_bytes);
+        let (iter, _) = graph.index.reveal_to_target(&keychain, 19).unwrap();
+        for (_idx, spk) in iter {
+            let spk = ScriptBuf::from_bytes(spk.to_bytes());
             addresses.push(Address::from_script(&spk, Network::Signet)?);
         }
     }
@@ -92,6 +89,9 @@ async fn main() -> anyhow::Result<()> {
         let graph_cs = indexed_tx_graph.initial_changeset();
         let _ = graph.apply_changeset(graph_cs);
     }
+
+    // Shutdown
+    client.shutdown().await?;
 
     let cp = chain.tip();
     let index = &graph.index;
