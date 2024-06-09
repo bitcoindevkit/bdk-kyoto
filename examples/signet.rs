@@ -14,18 +14,18 @@ use bdk_wallet::{KeychainKind, Wallet};
 
 use kyoto::chain::checkpoints::HeaderCheckpoint;
 use kyoto::node::builder::NodeBuilder;
-use kyoto::prelude::bitcoin::BlockHash;
-use kyoto::prelude::bitcoin::Network;
-use kyoto::prelude::bitcoin::{Address, ScriptBuf};
+use kyoto::{Address, BlockHash, Network, ScriptBuf};
+
+// Sync bdk chain and txgraph structures
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let secp = Secp256k1::new();
 
-    let desc = std::env::var("DESCRIPTOR")?;
+    let desc = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/0/*)";
+    let change_desc = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/1/*)";
     let (descriptor, _) = Descriptor::parse_descriptor(&secp, &desc)?;
-    let desc = std::env::var("CHANGE_DESCRIPTOR")?;
-    let (change_descriptor, _) = Descriptor::parse_descriptor(&secp, &desc)?;
+    let (change_descriptor, _) = Descriptor::parse_descriptor(&secp, &change_desc)?;
 
     let mut chain: LocalChain = {
         let g = genesis_block(bitcoin::Network::Signet).block_hash();
@@ -53,12 +53,13 @@ async fn main() -> anyhow::Result<()> {
     let subscriber = tracing_subscriber::FmtSubscriber::new();
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
+    let localhost_v4 = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let peer = IpAddr::V4(Ipv4Addr::new(170, 75, 163, 219));
     let peer_2 = IpAddr::V4(Ipv4Addr::new(23, 137, 57, 100));
 
     let builder = NodeBuilder::new(Network::Signet);
     let (mut node, client) = builder
-        .add_peers(vec![(peer, 38333), (peer_2, 38333)])
+        .add_peers(vec![(localhost_v4, 38333), (peer, 38333), (peer_2, 38333)])
         .add_scripts(addresses)
         .anchor_checkpoint(HeaderCheckpoint::new(
             169_000,

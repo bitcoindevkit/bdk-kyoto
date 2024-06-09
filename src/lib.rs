@@ -1,22 +1,26 @@
 //! bdk_kyoto
 
+#![allow(unused)]
 #![warn(missing_docs)]
 
 use core::fmt;
 use std::str::FromStr;
 
+use bdk_chain::bitcoin::Block;
 use bdk_chain::bitcoin::BlockHash;
 use bdk_chain::bitcoin::Transaction;
-use bdk_chain::collections::{BTreeMap, HashSet};
+use bdk_chain::collections::{BTreeMap, BTreeSet};
 use bdk_chain::keychain::KeychainTxOutIndex;
 use bdk_chain::local_chain::CheckPoint;
 use bdk_chain::BlockId;
 use bdk_chain::ConfirmationTimeHeightAnchor;
 use bdk_chain::IndexedTxGraph;
+
 use kyoto::node;
-use kyoto::node::node_messages::NodeMessage;
-use kyoto::prelude::bitcoin::BlockHash as KyotoBlockHash;
-use kyoto::prelude::bitcoin::Transaction as KyotoTransaction;
+use kyoto::node::messages::NodeMessage;
+use kyoto::Block as KyotoBlock;
+use kyoto::BlockHash as KyotoBlockHash;
+use kyoto::Transaction as KyotoTransaction;
 
 /// Request.
 #[derive(Debug)]
@@ -34,7 +38,7 @@ where
         Self { cp, index }
     }
 
-    /// Into `Client`.
+    /// Into [`Client`].
     pub fn into_client(self, client: node::client::Client) -> Client<K> {
         let mut index = KeychainTxOutIndex::default();
 
@@ -53,7 +57,7 @@ where
 }
 
 /// Client.
-// Note: kyoto Node doesn't impl Debug
+#[derive(Debug)]
 pub struct Client<K> {
     inner: kyoto::node::client::Client,
 
@@ -73,28 +77,24 @@ where
     pub async fn sync(&mut self) -> Option<Update<K>> {
         tracing::info!("Syncing..");
 
-        let (mut sender, receiver) = self.inner.split();
+        let (mut sender, mut receiver) = self.inner.split();
 
-        while let Some(message) = receiver.recv().await {
+        while let Ok(message) = receiver.recv().await {
             match message {
-                NodeMessage::Block(_) => {
-                    // note: we need the block height from this event
-                    // in order to use `apply_block_relevant`
-                }
-                NodeMessage::Transaction(tx) => {
-                    if let Some(height) = tx.height {
-                        self.blocks.insert(height as u32, convert_hash(&tx.hash));
-                    }
-                    let _ = self.graph.insert_tx(convert_tx(&tx.transaction));
+                NodeMessage::Block(kyoto::IndexedBlock { height, block }) => {
+                    let block = convert_block(&block);
+                    let hash = block.header.block_hash();
 
-                    // TODO: insert graph anchors?
-                    //let _ = self.graph.insert_anchor();
+                    tracing::info!("Applying Block..");
+                    self.blocks.insert(height, hash);
+                    let _ = self.graph.apply_block_relevant(&block, height);
+                }
+                NodeMessage::Transaction(_) => {}
+                NodeMessage::BlocksDisconnected(_) => {
+                    // what to do here?
                 }
                 NodeMessage::Synced(tip) => {
-                    // TODO: try using `CheckPoint::insert`
-
-                    self.blocks
-                        .insert(tip.height as u32, convert_hash(&tip.hash));
+                    self.blocks.insert(tip.height, convert_hash(&tip.hash));
                     tracing::info!("Synced to tip {} {:?}", tip.height, tip.hash);
                     break;
                 }
@@ -109,9 +109,9 @@ where
         self.as_update()
     }
 
-    /// As `Update`.
+    /// As [`Update`].
     fn as_update(&mut self) -> Option<Update<K>> {
-        let blocks: HashSet<BlockId> = self.blocks.iter().map(BlockId::from).collect();
+        let blocks: BTreeSet<BlockId> = self.blocks.iter().map(BlockId::from).collect();
         let min_update_height = blocks.iter().next()?.height;
 
         // find local block to base the new blocks onto
@@ -134,7 +134,7 @@ where
         })
     }
 
-    /// Shutdown
+    /// Shutdown.
     pub fn shutdown(&mut self) {
         todo!()
     }
@@ -144,22 +144,32 @@ where
 #[derive(Debug)]
 pub struct Update<K> {
     /// `CheckPoint`
-    pub cp: bdk_chain::local_chain::CheckPoint,
+    pub cp: CheckPoint,
     /// `IndexedTxGraph`
-    pub indexed_tx_graph:
-        bdk_chain::IndexedTxGraph<ConfirmationTimeHeightAnchor, KeychainTxOutIndex<K>>,
+    pub indexed_tx_graph: IndexedTxGraph<ConfirmationTimeHeightAnchor, KeychainTxOutIndex<K>>,
 }
 
 /// Convert hash.
+#[allow(dead_code)]
 fn convert_hash(hash: &KyotoBlockHash) -> BlockHash {
     let s = hash.to_string();
     BlockHash::from_str(&s).unwrap()
 }
 
 /// Convert tx.
+#[allow(dead_code)]
 fn convert_tx(tx: &KyotoTransaction) -> Transaction {
     use bdk_chain::bitcoin::consensus::deserialize;
-    use kyoto::prelude::bitcoin::consensus::serialize;
+    use kyoto::consensus::serialize;
     let data = serialize(tx);
+    deserialize(&data).expect("deserialize Transaction")
+}
+
+/// Convert block.
+#[allow(dead_code)]
+fn convert_block(block: &KyotoBlock) -> Block {
+    use bdk_chain::bitcoin::consensus::deserialize;
+    use kyoto::consensus::serialize;
+    let data = serialize(block);
     deserialize(&data).expect("deserialize Transaction")
 }

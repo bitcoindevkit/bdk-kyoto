@@ -21,3 +21,6 @@ tracing-subscriber = "0.3"
 
 [[example]]
 name = "signet"
+
+[[example]]
+name = "wallet"
