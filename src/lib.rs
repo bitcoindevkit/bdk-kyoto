@@ -44,7 +44,7 @@ where
     pub fn into_client(self, mut client: node::client::Client) -> Client<K> {
         let mut index = KeychainTxOutIndex::default();
 
-        // clone the keychains given by the `Request`
+        // clone the keychains given by the request
         for (keychain, descriptor) in self.index.keychains() {
             let _ = index.insert_descriptor(keychain.clone(), descriptor.clone());
         }
@@ -137,8 +137,8 @@ where
     }
 
     /// Shutdown.
-    pub async fn shutdown(&mut self) {
-        self.sender.shutdown().await.expect("shutdown node")
+    pub async fn shutdown(&mut self) -> Result<(), Error> {
+        self.sender.shutdown().await.map_err(Error::Client)
     }
 }
 
@@ -150,6 +150,23 @@ pub struct Update<K> {
     /// `IndexedTxGraph`
     pub indexed_tx_graph: IndexedTxGraph<ConfirmationTimeHeightAnchor, KeychainTxOutIndex<K>>,
 }
+
+/// Crate error.
+#[derive(Debug)]
+pub enum Error {
+    /// Client
+    Client(node::error::ClientError),
+}
+
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Client(e) => e.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
 
 /// Convert hash.
 #[allow(dead_code)]
