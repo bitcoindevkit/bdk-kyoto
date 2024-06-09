@@ -18,6 +18,7 @@ use bdk_chain::IndexedTxGraph;
 
 use kyoto::node;
 use kyoto::node::messages::NodeMessage;
+use kyoto::IndexedBlock;
 use kyoto::Block as KyotoBlock;
 use kyoto::BlockHash as KyotoBlockHash;
 use kyoto::Transaction as KyotoTransaction;
@@ -64,13 +65,13 @@ where
 /// Client.
 #[derive(Debug)]
 pub struct Client<K> {
-    // channel sender + receiver
+    // channel sender
     sender: node::client::ClientSender,
+    // channel receiver
     receiver: broadcast::Receiver<NodeMessage>,
-
     // blocks
     blocks: BTreeMap<u32, BlockHash>,
-    // cp
+    // local cp
     cp: CheckPoint,
     // receive graph
     graph: IndexedTxGraph<ConfirmationTimeHeightAnchor, KeychainTxOutIndex<K>>,
@@ -86,7 +87,7 @@ where
 
         while let Ok(message) = self.receiver.recv().await {
             match message {
-                NodeMessage::Block(kyoto::IndexedBlock { height, block }) => {
+                NodeMessage::Block(IndexedBlock { height, block }) => {
                     let block = convert_block(&block);
                     let hash = block.header.block_hash();
 

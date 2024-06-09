@@ -4,11 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+bdk_chain = { path = "../bdk/crates/chain" }
 tokio = { version = "1.0", default-features = false, features = ["full"] }
 tracing = "0.1"
-
-[dependencies.bdk_chain]
-path = "../bdk/crates/chain"
 
 [dependencies.kyoto]
 #git = "https://github.com/rustaceanrob/kyoto"
