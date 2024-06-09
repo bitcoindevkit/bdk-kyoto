@@ -22,6 +22,8 @@ use kyoto::Block as KyotoBlock;
 use kyoto::BlockHash as KyotoBlockHash;
 use kyoto::Transaction as KyotoTransaction;
 
+use tokio::sync::broadcast;
+
 /// Request.
 #[derive(Debug)]
 pub struct Request<'a, K> {
@@ -39,7 +41,7 @@ where
     }
 
     /// Into [`Client`].
-    pub fn into_client(self, client: node::client::Client) -> Client<K> {
+    pub fn into_client(self, mut client: node::client::Client) -> Client<K> {
         let mut index = KeychainTxOutIndex::default();
 
         // clone the keychains given by the `Request`
@@ -47,8 +49,11 @@ where
             let _ = index.insert_descriptor(keychain.clone(), descriptor.clone());
         }
 
+        let (sender, receiver) = client.split();
+
         Client {
-            inner: client,
+            sender,
+            receiver,
             blocks: BTreeMap::new(),
             cp: self.cp,
             graph: IndexedTxGraph::new(index),
@@ -59,7 +64,9 @@ where
 /// Client.
 #[derive(Debug)]
 pub struct Client<K> {
-    inner: kyoto::node::client::Client,
+    // channel sender + receiver
+    sender: node::client::ClientSender,
+    receiver: broadcast::Receiver<NodeMessage>,
 
     // blocks
     blocks: BTreeMap<u32, BlockHash>,
@@ -77,9 +84,7 @@ where
     pub async fn sync(&mut self) -> Option<Update<K>> {
         tracing::info!("Syncing..");
 
-        let (mut sender, mut receiver) = self.inner.split();
-
-        while let Ok(message) = receiver.recv().await {
+        while let Ok(message) = self.receiver.recv().await {
             match message {
                 NodeMessage::Block(kyoto::IndexedBlock { height, block }) => {
                     let block = convert_block(&block);
@@ -102,9 +107,6 @@ where
                 NodeMessage::Warning(s) => tracing::warn!("{s}"),
             }
         }
-
-        tracing::info!("Shutting down");
-        sender.shutdown().await.unwrap();
 
         self.as_update()
     }
@@ -135,8 +137,8 @@ where
     }
 
     /// Shutdown.
-    pub fn shutdown(&mut self) {
-        todo!()
+    pub async fn shutdown(&mut self) {
+        self.sender.shutdown().await.expect("shutdown node")
     }
 }
 
