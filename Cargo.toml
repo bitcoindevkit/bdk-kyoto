@@ -17,6 +17,8 @@ path = "../kyoto"
 [dev-dependencies]
 anyhow = "1.0"
 bdk_wallet = { path = "../bdk/crates/wallet" }
+bdk_file_store = { path = "../bdk/crates/file_store" }
+bdk_persist = { path = "../bdk/crates/persist" }
 tracing-subscriber = "0.3"
 
 [[example]]
