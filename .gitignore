@@ -3,5 +3,8 @@ debug/
 target/
 Cargo.lock
 
+# database
+data/
+
 # files
 *.log
