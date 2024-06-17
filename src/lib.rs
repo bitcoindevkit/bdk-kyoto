@@ -18,7 +18,6 @@ use kyoto::node;
 use kyoto::node::messages::NodeMessage;
 use kyoto::IndexedBlock;
 
-
 /// Request.
 #[derive(Debug)]
 pub struct Request<'a, K> {

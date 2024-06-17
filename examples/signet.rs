@@ -3,14 +3,15 @@
 use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
+use tokio::task;
 
 use bdk_chain::bitcoin::{
-    constants::genesis_block, secp256k1::Secp256k1, BlockHash, Network, ScriptBuf,
+    constants::genesis_block, secp256k1::Secp256k1, Address, BlockHash, Network, ScriptBuf,
 };
 use bdk_chain::keychain::KeychainTxOutIndex;
 use bdk_chain::local_chain::LocalChain;
 use bdk_chain::miniscript::Descriptor;
-use bdk_chain::IndexedTxGraph;
+use bdk_chain::{FullTxOut, IndexedTxGraph};
 
 use kyoto::chain::checkpoints::HeaderCheckpoint;
 use kyoto::node::builder::NodeBuilder;
@@ -49,13 +50,15 @@ async fn main() -> anyhow::Result<()> {
     let subscriber = tracing_subscriber::FmtSubscriber::new();
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
-    let localhost_v4 = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
-    let peer = IpAddr::V4(Ipv4Addr::new(170, 75, 163, 219));
-    let peer_2 = IpAddr::V4(Ipv4Addr::new(23, 137, 57, 100));
+    let peers = vec![
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+        IpAddr::V4(Ipv4Addr::new(170, 75, 163, 219)),
+        IpAddr::V4(Ipv4Addr::new(23, 137, 57, 100)),
+    ];
 
     let builder = NodeBuilder::new(Network::Signet);
     let (mut node, client) = builder
-        .add_peers(vec![(localhost_v4, 38333), (peer, 38333), (peer_2, 38333)])
+        .add_peers(peers.into_iter().map(|ip| (ip, 38333)).collect())
         .add_scripts(spks_to_watch)
         .anchor_checkpoint(HeaderCheckpoint::new(
             169_000,
@@ -73,7 +76,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Run the `Node`
     if !node.is_running() {
-        tokio::task::spawn(async move { node.run().await });
+        task::spawn(async move { node.run().await });
     }
 
     // Sync and apply updates
@@ -84,9 +87,7 @@ async fn main() -> anyhow::Result<()> {
         } = update;
 
         let _ = chain.apply_update(cp)?;
-
-        let graph_changeset = indexed_tx_graph.initial_changeset();
-        let _ = graph.apply_changeset(graph_changeset);
+        let _ = graph.apply_changeset(indexed_tx_graph.initial_changeset());
     }
 
     // Shutdown
@@ -94,6 +95,16 @@ async fn main() -> anyhow::Result<()> {
 
     let cp = chain.tip();
     let index = &graph.index;
+    let outpoints = index.outpoints().clone();
+    let unspent: Vec<FullTxOut<_>> = graph
+        .graph()
+        .filter_chain_unspents(&chain, cp.block_id(), outpoints)
+        .map(|(_, txout)| txout)
+        .collect();
+    for utxo in unspent {
+        let addr = Address::from_script(utxo.txout.script_pubkey.as_script(), Network::Signet)?;
+        println!("Funded: {:?}", addr);
+    }
     println!("Graph txs count: {}", graph.graph().full_txs().count());
     println!("Local tip: {} {}", cp.height(), cp.hash());
     println!(
