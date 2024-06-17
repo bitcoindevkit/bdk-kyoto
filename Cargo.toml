@@ -4,19 +4,17 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bdk_chain = { path = "../bdk/crates/chain" }
+bdk_chain = { version = "0.16.0" }
 tokio = { version = "1.0", default-features = false, features = ["full"] }
 tracing = "0.1"
 
 [dependencies.kyoto]
-#git = "https://github.com/rustaceanrob/kyoto"
-path = "../kyoto"
+git = "https://github.com/rustaceanrob/kyoto"
 
 [dev-dependencies]
 anyhow = "1.0"
-bdk_wallet = { path = "../bdk/crates/wallet" }
-bdk_file_store = { path = "../bdk/crates/file_store" }
-bdk_persist = { path = "../bdk/crates/persist" }
+bdk_wallet = { version = "1.0.0-alpha.13" }
+bdk_file_store = { version = "0.13.0" }
 tracing-subscriber = "0.3"
 
 [[example]]

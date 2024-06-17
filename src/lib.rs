@@ -4,11 +4,9 @@
 #![warn(missing_docs)]
 
 use core::fmt;
-use std::str::FromStr;
+use tokio::sync::broadcast;
 
-use bdk_chain::bitcoin::Block;
 use bdk_chain::bitcoin::BlockHash;
-use bdk_chain::bitcoin::Transaction;
 use bdk_chain::collections::{BTreeMap, BTreeSet};
 use bdk_chain::keychain::KeychainTxOutIndex;
 use bdk_chain::local_chain::CheckPoint;
@@ -19,11 +17,7 @@ use bdk_chain::IndexedTxGraph;
 use kyoto::node;
 use kyoto::node::messages::NodeMessage;
 use kyoto::IndexedBlock;
-use kyoto::Block as KyotoBlock;
-use kyoto::BlockHash as KyotoBlockHash;
-use kyoto::Transaction as KyotoTransaction;
 
-use tokio::sync::broadcast;
 
 /// Request.
 #[derive(Debug)]
@@ -88,7 +82,6 @@ where
         while let Ok(message) = self.receiver.recv().await {
             match message {
                 NodeMessage::Block(IndexedBlock { height, block }) => {
-                    let block = convert_block(&block);
                     let hash = block.header.block_hash();
 
                     tracing::info!("Applying Block..");
@@ -97,15 +90,17 @@ where
                 }
                 NodeMessage::Transaction(_) => {}
                 NodeMessage::BlocksDisconnected(_) => {
-                    // what to do here?
+                    // what to do here, just remove an entry from `self.blocks` ?
                 }
                 NodeMessage::Synced(tip) => {
-                    self.blocks.insert(tip.height, convert_hash(&tip.hash));
+                    self.blocks.insert(tip.height, tip.hash);
                     tracing::info!("Synced to tip {} {:?}", tip.height, tip.hash);
                     break;
                 }
                 NodeMessage::Dialog(s) => tracing::info!("{s}"),
                 NodeMessage::Warning(s) => tracing::warn!("{s}"),
+                //NodeMessage::TxBroadcastFailure
+                _ => {}
             }
         }
 
@@ -168,28 +163,3 @@ impl core::fmt::Display for Error {
 }
 
 impl std::error::Error for Error {}
-
-/// Convert hash.
-#[allow(dead_code)]
-fn convert_hash(hash: &KyotoBlockHash) -> BlockHash {
-    let s = hash.to_string();
-    BlockHash::from_str(&s).unwrap()
-}
-
-/// Convert tx.
-#[allow(dead_code)]
-fn convert_tx(tx: &KyotoTransaction) -> Transaction {
-    use bdk_chain::bitcoin::consensus::deserialize;
-    use kyoto::consensus::serialize;
-    let data = serialize(tx);
-    deserialize(&data).expect("deserialize Transaction")
-}
-
-/// Convert block.
-#[allow(dead_code)]
-fn convert_block(block: &KyotoBlock) -> Block {
-    use bdk_chain::bitcoin::consensus::deserialize;
-    use kyoto::consensus::serialize;
-    let data = serialize(block);
-    deserialize(&data).expect("deserialize Transaction")
-}

@@ -1,18 +1,19 @@
 #![allow(unused)]
 
+use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 
-use bdk_chain::bitcoin::constants::genesis_block;
-use bdk_chain::bitcoin::secp256k1::Secp256k1;
+use bdk_chain::bitcoin::{
+    constants::genesis_block, secp256k1::Secp256k1, BlockHash, Network, ScriptBuf,
+};
 use bdk_chain::keychain::KeychainTxOutIndex;
 use bdk_chain::local_chain::LocalChain;
 use bdk_chain::miniscript::Descriptor;
-use bdk_chain::{bitcoin, ConfirmationTimeHeightAnchor, IndexedTxGraph};
+use bdk_chain::IndexedTxGraph;
 
 use kyoto::chain::checkpoints::HeaderCheckpoint;
 use kyoto::node::builder::NodeBuilder;
-use kyoto::{Address, BlockHash, Network, ScriptBuf};
 
 // Sync bdk chain and txgraph structures
 
@@ -26,7 +27,7 @@ async fn main() -> anyhow::Result<()> {
     let (change_descriptor, _) = Descriptor::parse_descriptor(&secp, &change_desc)?;
 
     let mut chain: LocalChain = {
-        let g = genesis_block(bitcoin::Network::Signet).block_hash();
+        let g = genesis_block(Network::Signet).block_hash();
         let (chain, _) = LocalChain::from_genesis_hash(g);
         chain
     };
@@ -38,13 +39,11 @@ async fn main() -> anyhow::Result<()> {
         index
     });
 
-    let mut addresses: Vec<Address> = vec![];
+    let mut spks_to_watch: HashSet<ScriptBuf> = HashSet::new();
     for keychain in 0usize..=1 {
-        let (iter, _) = graph.index.reveal_to_target(&keychain, 19).unwrap();
-        for (_idx, spk) in iter {
-            let spk = ScriptBuf::from_bytes(spk.to_bytes());
-            addresses.push(Address::from_script(&spk, Network::Signet)?);
-        }
+        let (indexed_spks, _changeset) = graph.index.reveal_to_target(&keychain, 19).unwrap();
+        let mut spks = indexed_spks.into_iter().map(|(_i, spk)| spk);
+        spks_to_watch.extend(&mut spks);
     }
 
     let subscriber = tracing_subscriber::FmtSubscriber::new();
@@ -57,7 +56,7 @@ async fn main() -> anyhow::Result<()> {
     let builder = NodeBuilder::new(Network::Signet);
     let (mut node, client) = builder
         .add_peers(vec![(localhost_v4, 38333), (peer, 38333), (peer_2, 38333)])
-        .add_scripts(addresses)
+        .add_scripts(spks_to_watch)
         .anchor_checkpoint(HeaderCheckpoint::new(
             169_000,
             BlockHash::from_str(
@@ -86,8 +85,8 @@ async fn main() -> anyhow::Result<()> {
 
         let _ = chain.apply_update(cp)?;
 
-        let graph_cs = indexed_tx_graph.initial_changeset();
-        let _ = graph.apply_changeset(graph_cs);
+        let graph_changeset = indexed_tx_graph.initial_changeset();
+        let _ = graph.apply_changeset(graph_changeset);
     }
 
     // Shutdown
@@ -99,9 +98,12 @@ async fn main() -> anyhow::Result<()> {
     println!("Local tip: {} {}", cp.height(), cp.hash());
     println!(
         "Balance: {:#?}",
-        graph
-            .graph()
-            .balance(&chain, cp.block_id(), index.outpoints(), |_, _| true)
+        graph.graph().balance(
+            &chain,
+            cp.block_id(),
+            index.outpoints().iter().cloned(),
+            |_, _| true
+        )
     );
     println!(
         "Last revealed indices: {:#?}",
