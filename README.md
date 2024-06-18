@@ -1,5 +1,7 @@
 # bdk-kyoto
 
+A chain backend for BDK using compact filter based light client [kyoto](https://github.com/rustaceanrob/kyoto).
+
 ### Issues
 - Is the witness stripped from txs fetched over p2p?
     - https://bitcoin.stackexchange.com/questions/116952/bitcoin-p2p-network-unable-to-receive-the-full-block-data-witness-stripped-off
