@@ -5,6 +5,7 @@ Cargo.lock
 
 # database
 data/
+.bdk_*
 
 # files
 *.log
