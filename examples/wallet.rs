@@ -6,7 +6,6 @@ use std::str::FromStr;
 
 use bdk_chain::bitcoin::{BlockHash, Network, ScriptBuf};
 use bdk_file_store::Store;
-use bdk_wallet::bitcoin;
 use bdk_wallet::wallet;
 use bdk_wallet::KeychainKind;
 use bdk_wallet::Wallet;
@@ -25,7 +24,7 @@ async fn main() -> anyhow::Result<()> {
     let desc = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/0/*)";
     let change_desc = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/1/*)";
 
-    let mut wallet = Wallet::new_or_load(desc, change_desc, loaded, bitcoin::Network::Signet)?;
+    let mut wallet = Wallet::new_or_load(desc, change_desc, loaded, Network::Signet)?;
     println!(
         "{}",
         wallet.next_unused_address(KeychainKind::External).address
@@ -56,11 +55,11 @@ async fn main() -> anyhow::Result<()> {
     let tip = wallet.latest_checkpoint().block_id();
     println!("Last local tip: {} {}", tip.height, tip.hash);
 
-    //let header_cp = HeaderCheckpoint::new(tip.height, convert_hash(&tip.hash));
-    let header_cp = HeaderCheckpoint::new(
-        169_000,
-        BlockHash::from_str("000000ed6fe89c46140f55ff511c558bcbdb1239ba95474f38f619b3bb657d4a")?,
-    );
+    let header_cp = HeaderCheckpoint::new(tip.height, tip.hash);
+    // let header_cp = HeaderCheckpoint::new(
+    //     169_000,
+    //     BlockHash::from_str("000000ed6fe89c46140f55ff511c558bcbdb1239ba95474f38f619b3bb657d4a")?,
+    // );
 
     // Configure kyoto node and console logger
     let subscriber = tracing_subscriber::FmtSubscriber::new();
@@ -77,7 +76,7 @@ async fn main() -> anyhow::Result<()> {
         .add_peers(peers.into_iter().map(|ip| (ip, port)).collect())
         .add_scripts(spks)
         .anchor_checkpoint(header_cp)
-        .num_required_peers(1)
+        .num_required_peers(2)
         .build_node()
         .await;
 
@@ -104,23 +103,26 @@ async fn main() -> anyhow::Result<()> {
             graph: indexed_tx_graph.graph().clone(),
             last_active_indices: indexed_tx_graph.index.last_used_indices(),
         })?;
-    } else {
-        println!("nothing to do");
     }
+
+    let _ = client.shutdown().await?;
 
     // Persist changes
     if let Some(changeset) = wallet.take_staged() {
         db.append_changeset(&changeset)?;
     }
 
-    let _ = client.shutdown().await?;
-
     let cp = wallet.latest_checkpoint();
     println!("Synced to tip: {} {}", cp.height(), cp.hash());
-    println!(
-        "Balance after sync: {} sats",
-        wallet.balance().total().to_sat()
-    );
+    println!("Tx count: {}", wallet.transactions().count());
+    println!("Balance: {:#?}", wallet.balance());
+    for keychain in [KeychainKind::External, KeychainKind::Internal] {
+        println!(
+            "Last revealed: {:?} {}",
+            keychain,
+            wallet.derivation_index(keychain).unwrap()
+        );
+    }
 
     Ok(())
 }

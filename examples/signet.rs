@@ -27,11 +27,8 @@ async fn main() -> anyhow::Result<()> {
     let (descriptor, _) = Descriptor::parse_descriptor(&secp, &desc)?;
     let (change_descriptor, _) = Descriptor::parse_descriptor(&secp, &change_desc)?;
 
-    let mut chain: LocalChain = {
-        let g = genesis_block(Network::Signet).block_hash();
-        let (chain, _) = LocalChain::from_genesis_hash(g);
-        chain
-    };
+    let g = genesis_block(Network::Signet).block_hash();
+    let (mut chain, _) = LocalChain::from_genesis_hash(g);
 
     let mut graph = IndexedTxGraph::new({
         let mut index = KeychainTxOutIndex::default();
