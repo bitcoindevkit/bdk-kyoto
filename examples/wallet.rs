@@ -4,10 +4,11 @@ use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 
-use bdk_chain::bitcoin::{BlockHash, Network, ScriptBuf};
-use bdk_wallet::wallet;
-use bdk_wallet::KeychainKind;
-use bdk_wallet::Wallet;
+use bdk_wallet::bitcoin::{BlockHash, Network, ScriptBuf};
+use bdk_wallet::{
+    wallet::{self, Wallet},
+    KeychainKind,
+};
 
 use kyoto::chain::checkpoints::HeaderCheckpoint;
 use kyoto::node::builder::NodeBuilder;

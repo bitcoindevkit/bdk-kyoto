@@ -5,18 +5,18 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 use tokio::task;
 
-use bdk_chain::bitcoin::{
+use bdk_wallet::bitcoin::{
     constants::genesis_block, secp256k1::Secp256k1, Address, BlockHash, Network, ScriptBuf,
 };
-use bdk_chain::keychain::KeychainTxOutIndex;
-use bdk_chain::local_chain::LocalChain;
-use bdk_chain::miniscript::Descriptor;
-use bdk_chain::{FullTxOut, IndexedTxGraph};
+use bdk_wallet::chain::{
+    keychain::KeychainTxOutIndex, local_chain::LocalChain, miniscript::Descriptor, FullTxOut,
+    IndexedTxGraph,
+};
 
 use kyoto::chain::checkpoints::HeaderCheckpoint;
 use kyoto::node::builder::NodeBuilder;
 
-// Sync bdk chain and txgraph structures
+/* Sync bdk chain and txgraph structures */
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

@@ -6,13 +6,14 @@
 use core::fmt;
 use tokio::sync::broadcast;
 
-use bdk_chain::bitcoin::BlockHash;
-use bdk_chain::collections::{BTreeMap, BTreeSet};
-use bdk_chain::keychain::KeychainTxOutIndex;
-use bdk_chain::local_chain::CheckPoint;
-use bdk_chain::BlockId;
-use bdk_chain::ConfirmationTimeHeightAnchor;
-use bdk_chain::IndexedTxGraph;
+use bdk_wallet::bitcoin::BlockHash;
+
+use bdk_wallet::chain::{
+    collections::{BTreeMap, BTreeSet},
+    keychain::KeychainTxOutIndex,
+    local_chain::CheckPoint,
+    BlockId, ConfirmationTimeHeightAnchor, IndexedTxGraph,
+};
 
 use kyoto::node;
 use kyoto::node::messages::NodeMessage;

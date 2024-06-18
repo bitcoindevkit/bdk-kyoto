@@ -3,18 +3,26 @@ name = "bdk_kyoto"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "example_kyoto"
+
 [dependencies]
-bdk_chain = { version = "0.16.0" }
+anyhow = "1.0"
 tokio = { version = "1.0", default-features = false, features = ["full"] }
 tracing = "0.1"
+tracing-subscriber = "0.3"
 
 [dependencies.kyoto]
 git = "https://github.com/rustaceanrob/kyoto"
 
-[dev-dependencies]
-anyhow = "1.0"
-bdk_wallet = { version = "1.0.0-alpha.13" }
-tracing-subscriber = "0.3"
+[dependencies.bdk_wallet]
+# version alpha.13
+git = "https://github.com/bitcoindevkit/bdk"
+rev = "05438017876c3338d091ca85e52242b455e2193a"
+
+[dependencies.example_cli]
+git = "https://github.com/bitcoindevkit/bdk"
+rev = "05438017876c3338d091ca85e52242b455e2193a"
 
 [[example]]
 name = "signet"
