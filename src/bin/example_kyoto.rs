@@ -1,24 +1,26 @@
 #![allow(unused)]
 
-use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 use std::sync::Mutex;
 use tokio::task;
+use tokio::time;
 
 use bdk_wallet::bitcoin::{constants, Network};
 
 use bdk_wallet::chain::{
+    collections::HashSet,
     indexed_tx_graph::{self, IndexedTxGraph},
     keychain,
-    local_chain::{self, LocalChain},
-    ConfirmationTimeHeightAnchor,
+    local_chain::{self, CheckPoint, LocalChain},
+    BlockId, ConfirmationTimeHeightAnchor,
 };
 
 use example_cli::{
     clap::{self, Args, Subcommand},
     Keychain,
 };
+
 use kyoto::chain::checkpoints::HeaderCheckpoint;
 use kyoto::node::builder::NodeBuilder;
 use kyoto::BlockHash;
@@ -52,7 +54,14 @@ enum Cmd {
 }
 
 #[derive(Args, Debug, Clone)]
-struct Arg {}
+struct Arg {
+    /// Start height
+    #[clap(env = "START_HEIGHT")]
+    height: u32,
+    /// Start hash
+    #[clap(env = "START_HASH")]
+    hash: BlockHash,
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -75,12 +84,13 @@ async fn main() -> anyhow::Result<()> {
         graph
     });
 
-    let chain = Mutex::new({
+    let (chain, local_heights) = {
         let g = constants::genesis_block(args.network).block_hash();
         let (mut chain, _) = LocalChain::from_genesis_hash(g);
         chain.apply_changeset(&init_chain_changeset)?;
-        chain
-    });
+        let heights: HashSet<_> = chain.iter_checkpoints().map(|cp| cp.height()).collect();
+        (Mutex::new(chain), heights)
+    };
 
     let cmd = match &args.command {
         example_cli::Commands::ChainSpecific(cmd) => cmd,
@@ -97,14 +107,16 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    let now = time::Instant::now();
+
     match cmd {
-        Cmd::Sync { .. } => {
+        Cmd::Sync { args } => {
             let mut spks = HashSet::new();
-            
+
             let header_cp = {
                 let chain = chain.lock().unwrap();
                 let graph = graph.lock().unwrap();
-                
+
                 // Populate list of watched SPKs
                 let indexer = &graph.index;
                 for (keychain, _) in indexer.keychains() {
@@ -116,9 +128,15 @@ async fn main() -> anyhow::Result<()> {
                         spks.insert(spk.to_owned());
                     }
                 }
-                
+
+                // Begin sync from at least the specified wallet birthday
+                // or else the last local checkpoint
                 let cp = chain.tip();
-                HeaderCheckpoint::new(cp.height(), cp.hash())
+                if cp.height() < args.height {
+                    HeaderCheckpoint::new(args.height, args.hash)
+                } else {
+                    HeaderCheckpoint::new(cp.height(), cp.hash())
+                }
             };
 
             // Configure kyoto node
@@ -164,15 +182,24 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    let elapsed = now.elapsed();
+    println!("Duration: {}s", elapsed.as_secs_f32());
+
     let chain = chain.lock().unwrap();
     let graph = graph.lock().unwrap();
     let cp = chain.tip();
+    println!("Local tip: {} {}", cp.height(), cp.hash());
     let outpoints = graph.index.outpoints().clone();
     println!(
         "Balance: {:#?}",
         graph
             .graph()
             .balance(&*chain, cp.block_id(), outpoints, |_, _| true)
+    );
+    let new_heights: HashSet<_> = chain.iter_checkpoints().map(|cp| cp.height()).collect();
+    assert!(
+        new_heights.is_superset(&local_heights),
+        "all heights in original chain must be present"
     );
 
     Ok(())

@@ -4,6 +4,7 @@
 #![warn(missing_docs)]
 
 use core::fmt;
+use core::mem;
 use tokio::sync::broadcast;
 
 use bdk_wallet::bitcoin::BlockHash;
@@ -15,9 +16,13 @@ use bdk_wallet::chain::{
     BlockId, ConfirmationTimeHeightAnchor, IndexedTxGraph,
 };
 
+use kyoto::chain::checkpoints::HeaderCheckpoint;
 use kyoto::node;
 use kyoto::node::messages::NodeMessage;
 use kyoto::IndexedBlock;
+
+/// Block height
+type Height = u32;
 
 /// Request.
 #[derive(Debug)]
@@ -77,54 +82,42 @@ where
 {
     /// Sync.
     pub async fn sync(&mut self) -> Option<Update<K>> {
-        tracing::info!("Syncing..");
-
         while let Ok(message) = self.receiver.recv().await {
             match message {
                 NodeMessage::Block(IndexedBlock { height, block }) => {
                     let hash = block.header.block_hash();
+                    self.blocks.insert(height, hash);
 
                     tracing::info!("Applying Block..");
-                    self.blocks.insert(height, hash);
                     let _ = self.graph.apply_block_relevant(&block, height);
                 }
                 NodeMessage::Transaction(_) => {}
-                NodeMessage::BlocksDisconnected(_) => {
-                    // what to do here, just remove an entry from `self.blocks` ?
-                }
+                NodeMessage::BlocksDisconnected(_) => {}
                 NodeMessage::Synced(tip) => {
+                    if self.blocks.is_empty()
+                        && self.cp.height() == tip.height
+                        && self.cp.hash() == tip.hash
+                    {
+                        // return early if we're already synced
+                        tracing::info!("Done.");
+                        return None;
+                    }
                     self.blocks.insert(tip.height, tip.hash);
-                    tracing::info!("Synced to tip {} {:?}", tip.height, tip.hash);
+
+                    tracing::info!("Synced to tip {} {}", tip.height, tip.hash);
                     break;
                 }
+                NodeMessage::TxBroadcastFailure => {}
                 NodeMessage::Dialog(s) => tracing::info!("{s}"),
                 NodeMessage::Warning(s) => tracing::warn!("{s}"),
-                //NodeMessage::TxBroadcastFailure
-                _ => {}
             }
         }
 
-        self.as_update()
-    }
-
-    /// As [`Update`].
-    fn as_update(&mut self) -> Option<Update<K>> {
-        let blocks: BTreeSet<BlockId> = self.blocks.iter().map(BlockId::from).collect();
-        let min_update_height = blocks.iter().next()?.height;
-
-        // find local block to base the new blocks onto
-        let base: BlockId = {
-            let mut iter = self.cp.iter();
-            let mut cp = iter.next()?;
-            while cp.block_id().height >= min_update_height {
-                cp = iter.next()?;
-            }
-            cp.block_id()
-        };
-
-        let cp = CheckPoint::from_block_ids(core::iter::once(base).chain(blocks))
-            .expect("blocks are well ordered");
-        let indexed_tx_graph = core::mem::take(&mut self.graph);
+        let mut cp = self.cp.clone();
+        for block in self.blocks.iter().map(BlockId::from) {
+            cp = cp.insert(block);
+        }
+        let indexed_tx_graph = mem::take(&mut self.graph);
 
         Some(Update {
             cp,
