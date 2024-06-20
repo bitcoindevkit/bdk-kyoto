@@ -10,13 +10,12 @@ use tokio::sync::broadcast;
 use bdk_wallet::bitcoin::BlockHash;
 
 use bdk_wallet::chain::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     keychain::KeychainTxOutIndex,
-    local_chain::CheckPoint,
+    local_chain::{self, CheckPoint},
     BlockId, ConfirmationTimeHeightAnchor, IndexedTxGraph,
 };
 
-use kyoto::chain::checkpoints::HeaderCheckpoint;
 use kyoto::node;
 use kyoto::node::messages::NodeMessage;
 use kyoto::IndexedBlock;
@@ -54,7 +53,7 @@ where
         Client {
             sender,
             receiver,
-            blocks: BTreeMap::new(),
+            chain_changeset: BTreeMap::new(),
             cp: self.cp,
             graph: IndexedTxGraph::new(index),
         }
@@ -68,8 +67,8 @@ pub struct Client<K> {
     sender: node::client::ClientSender,
     // channel receiver
     receiver: broadcast::Receiver<NodeMessage>,
-    // blocks
-    blocks: BTreeMap<u32, BlockHash>,
+    // changes to local chain
+    chain_changeset: local_chain::ChangeSet,
     // local cp
     cp: CheckPoint,
     // receive graph
@@ -86,15 +85,21 @@ where
             match message {
                 NodeMessage::Block(IndexedBlock { height, block }) => {
                     let hash = block.header.block_hash();
-                    self.blocks.insert(height, hash);
+                    self.chain_changeset.insert(height, Some(hash));
 
                     tracing::info!("Applying Block..");
                     let _ = self.graph.apply_block_relevant(&block, height);
                 }
                 NodeMessage::Transaction(_) => {}
-                NodeMessage::BlocksDisconnected(_) => {}
+                NodeMessage::BlocksDisconnected(headers) => {
+                    for header in headers {
+                        let height = header.height;
+                        tracing::info!("Disconnecting block: {height}");
+                        self.chain_changeset.insert(height, None);
+                    }
+                }
                 NodeMessage::Synced(tip) => {
-                    if self.blocks.is_empty()
+                    if self.chain_changeset.is_empty()
                         && self.cp.height() == tip.height
                         && self.cp.hash() == tip.hash
                     {
@@ -102,7 +107,7 @@ where
                         tracing::info!("Done.");
                         return None;
                     }
-                    self.blocks.insert(tip.height, tip.hash);
+                    self.chain_changeset.insert(tip.height, Some(tip.hash));
 
                     tracing::info!("Synced to tip {} {}", tip.height, tip.hash);
                     break;
@@ -113,16 +118,52 @@ where
             }
         }
 
-        let mut cp = self.cp.clone();
-        for block in self.blocks.iter().map(BlockId::from) {
-            cp = cp.insert(block);
-        }
+        let cp = self.update_chain()?;
         let indexed_tx_graph = mem::take(&mut self.graph);
 
         Some(Update {
             cp,
             indexed_tx_graph,
         })
+    }
+
+    /// Update chain.
+    fn update_chain(&self) -> Option<CheckPoint> {
+        // Note: this is taken from `CheckPoint::apply_changeset`
+        // which is not currently a pub fn
+        let start_height = self.chain_changeset.keys().copied().next()?;
+        let mut blocks = BTreeMap::<Height, BlockHash>::new();
+
+        // find local block to base new blocks onto, keeping all
+        // original heights above `start_height`
+        let base: BlockId = {
+            let mut it = self.cp.iter();
+            let mut cp = it.next()?;
+            while cp.height() >= start_height {
+                blocks.insert(cp.height(), cp.hash());
+                cp = it.next().expect("fallback to genesis");
+            }
+            cp.block_id()
+        };
+
+        // apply the changes
+        for (&height, &hash) in self.chain_changeset.iter() {
+            match hash {
+                Some(hash) => {
+                    blocks.insert(height, hash);
+                }
+                None => {
+                    blocks.remove(&height);
+                }
+            };
+        }
+
+        Some(
+            CheckPoint::from_block_ids(
+                core::iter::once(base).chain(blocks.into_iter().map(BlockId::from)),
+            )
+            .expect("blocks are well ordered"),
+        )
     }
 
     /// Shutdown.
