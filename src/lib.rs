@@ -7,7 +7,7 @@ use core::fmt;
 use core::mem;
 use tokio::sync::broadcast;
 
-use bdk_wallet::bitcoin::BlockHash;
+use bdk_wallet::bitcoin::{BlockHash, Transaction};
 
 use bdk_wallet::chain::{
     collections::BTreeMap,
@@ -16,9 +16,9 @@ use bdk_wallet::chain::{
     BlockId, ConfirmationTimeHeightAnchor, IndexedTxGraph,
 };
 
-use kyoto::node;
-use kyoto::node::messages::NodeMessage;
+use kyoto::node::{self, messages::NodeMessage};
 use kyoto::IndexedBlock;
+use kyoto::TxBroadcast;
 
 /// Block height
 type Height = u32;
@@ -164,6 +164,19 @@ where
             )
             .expect("blocks are well ordered"),
         )
+    }
+
+    /// Broadcast a [`Transaction`].
+    pub async fn broadcast(&mut self, tx: &Transaction) -> Result<(), Error> {
+        use kyoto::TxBroadcastPolicy::*;
+
+        self.sender
+            .broadcast_tx(TxBroadcast {
+                tx: tx.clone(),
+                broadcast_policy: AllPeers,
+            })
+            .await
+            .map_err(Error::Client)
     }
 
     /// Shutdown.
