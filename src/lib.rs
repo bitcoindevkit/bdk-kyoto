@@ -87,7 +87,7 @@ where
                     let hash = block.header.block_hash();
                     self.chain_changeset.insert(height, Some(hash));
 
-                    tracing::info!("Applying Block..");
+                    tracing::info!("Applying Block: {}", hash);
                     let _ = self.graph.apply_block_relevant(&block, height);
                 }
                 NodeMessage::Transaction(_) => {}
@@ -98,20 +98,21 @@ where
                         self.chain_changeset.insert(height, None);
                     }
                 }
-                NodeMessage::Synced(tip) => {
+                NodeMessage::Synced(update) => {
                     if self.chain_changeset.is_empty()
-                        && self.cp.height() == tip.height
-                        && self.cp.hash() == tip.hash
+                        && self.cp.height() == update.tip.height
+                        && self.cp.hash() == update.tip.hash
                     {
                         // return early if we're already synced
                         tracing::info!("Done.");
                         return None;
                     }
-                    self.chain_changeset.insert(tip.height, Some(tip.hash));
+                    self.chain_changeset.insert(update.tip.height, Some(update.tip.hash));
 
-                    tracing::info!("Synced to tip {} {}", tip.height, tip.hash);
+                    tracing::info!("Synced to tip {} {}", update.tip.height, update.tip.hash);
                     break;
                 }
+                NodeMessage::TxSent => {}
                 NodeMessage::TxBroadcastFailure => {}
                 NodeMessage::Dialog(s) => tracing::info!("{s}"),
                 NodeMessage::Warning(s) => tracing::warn!("{s}"),
