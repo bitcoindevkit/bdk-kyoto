@@ -107,13 +107,14 @@ where
                         tracing::info!("Done.");
                         return None;
                     }
-                    self.chain_changeset.insert(update.tip.height, Some(update.tip.hash));
+                    self.chain_changeset
+                        .insert(update.tip.height, Some(update.tip.hash));
 
                     tracing::info!("Synced to tip {} {}", update.tip.height, update.tip.hash);
                     break;
                 }
-                NodeMessage::TxSent => {}
-                NodeMessage::TxBroadcastFailure => {}
+                NodeMessage::TxSent(_) => {}
+                NodeMessage::TxBroadcastFailure(_) => {}
                 NodeMessage::Dialog(s) => tracing::info!("{s}"),
                 NodeMessage::Warning(s) => tracing::warn!("{s}"),
             }
