@@ -5,6 +5,7 @@
 
 use core::fmt;
 use core::mem;
+use kyoto::node::messages::SyncUpdate;
 use tokio::sync::broadcast;
 
 use bdk_wallet::bitcoin::{BlockHash, Transaction};
@@ -87,7 +88,7 @@ where
                     let hash = block.header.block_hash();
                     self.chain_changeset.insert(height, Some(hash));
 
-                    tracing::info!("Applying Block: {}", hash);
+                    tracing::info!("Applying Block: {hash}");
                     let _ = self.graph.apply_block_relevant(&block, height);
                 }
                 NodeMessage::Transaction(_) => {}
@@ -98,19 +99,19 @@ where
                         self.chain_changeset.insert(height, None);
                     }
                 }
-                NodeMessage::Synced(update) => {
+                NodeMessage::Synced(SyncUpdate { tip, recent_history }) => {
                     if self.chain_changeset.is_empty()
-                        && self.cp.height() == update.tip.height
-                        && self.cp.hash() == update.tip.hash
+                        && self.cp.height() == tip.height
+                        && self.cp.hash() == tip.hash
                     {
                         // return early if we're already synced
                         tracing::info!("Done.");
                         return None;
                     }
                     self.chain_changeset
-                        .insert(update.tip.height, Some(update.tip.hash));
+                        .insert(tip.height, Some(tip.hash));
 
-                    tracing::info!("Synced to tip {} {}", update.tip.height, update.tip.hash);
+                    tracing::info!("Synced to tip {} {}", tip.height, tip.hash);
                     break;
                 }
                 NodeMessage::TxSent(_) => {}
