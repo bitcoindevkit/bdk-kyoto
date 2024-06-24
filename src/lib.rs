@@ -99,7 +99,10 @@ where
                         self.chain_changeset.insert(height, None);
                     }
                 }
-                NodeMessage::Synced(SyncUpdate { tip, recent_history }) => {
+                NodeMessage::Synced(SyncUpdate {
+                    tip,
+                    recent_history,
+                }) => {
                     if self.chain_changeset.is_empty()
                         && self.cp.height() == tip.height
                         && self.cp.hash() == tip.hash
@@ -108,8 +111,9 @@ where
                         tracing::info!("Done.");
                         return None;
                     }
-                    self.chain_changeset
-                        .insert(tip.height, Some(tip.hash));
+                    for (height, header) in recent_history {
+                        self.chain_changeset.insert(height, Some(header.block_hash()));
+                    }
 
                     tracing::info!("Synced to tip {} {}", tip.height, tip.hash);
                     break;

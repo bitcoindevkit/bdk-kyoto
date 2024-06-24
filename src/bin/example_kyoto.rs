@@ -3,6 +3,7 @@
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 use std::sync::Mutex;
+use kyoto::db::memory::peers::StatelessPeerStore;
 use tokio::task;
 use tokio::time;
 
@@ -131,11 +132,16 @@ async fn main() -> anyhow::Result<()> {
 
                 // Begin sync from at least the specified wallet birthday
                 // or else the last local checkpoint
-                let cp = chain.tip();
-                if cp.height() < args.height {
+                let tip = chain.tip();
+                if tip.height() < args.height {
                     HeaderCheckpoint::new(args.height, args.hash)
                 } else {
-                    HeaderCheckpoint::new(cp.height(), cp.hash())
+                    let mut iter = chain.range(tip.height() - 9..);
+                    let maybe_checkpoint = iter.nth(0);
+                    match maybe_checkpoint {
+                        Some(root) => HeaderCheckpoint::new(root.height(), root.hash()),
+                        None => HeaderCheckpoint::new(tip.height(), tip.hash()),
+                    }
                 }
             };
 
@@ -146,7 +152,7 @@ async fn main() -> anyhow::Result<()> {
                 .add_scripts(spks)
                 .anchor_checkpoint(header_cp)
                 .num_required_peers(2)
-                .build_node()
+                .build_with_databases(StatelessPeerStore::new(), ())
                 .await;
 
             let mut client = {
