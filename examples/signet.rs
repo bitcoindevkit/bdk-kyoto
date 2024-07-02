@@ -77,7 +77,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Sync and apply updates
-    if let Some(update) = client.sync().await {
+    if let Some(update) = client.update().await {
         let bdk_kyoto::Update {
             cp,
             indexed_tx_graph,

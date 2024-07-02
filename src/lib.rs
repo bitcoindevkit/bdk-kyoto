@@ -3,9 +3,13 @@
 #![allow(unused)]
 #![warn(missing_docs)]
 
+use bdk_wallet::KeychainKind;
 use core::fmt;
 use core::mem;
 use kyoto::node::messages::SyncUpdate;
+use kyoto::node::node::Node;
+use kyoto::ScriptBuf;
+use std::collections::HashSet;
 use tokio::sync::broadcast;
 
 use bdk_wallet::bitcoin::{BlockHash, Transaction};
@@ -20,6 +24,8 @@ use bdk_wallet::chain::{
 use kyoto::node::{self, messages::NodeMessage};
 use kyoto::IndexedBlock;
 use kyoto::TxBroadcast;
+
+pub mod builder;
 
 /// Block height
 type Height = u32;
@@ -81,7 +87,7 @@ where
     K: fmt::Debug + Clone + Ord,
 {
     /// Sync.
-    pub async fn sync(&mut self) -> Option<Update<K>> {
+    pub async fn update(&mut self) -> Option<Update<K>> {
         while let Ok(message) = self.receiver.recv().await {
             match message {
                 NodeMessage::Block(IndexedBlock { height, block }) => {
@@ -99,17 +105,19 @@ where
                         self.chain_changeset.insert(height, None);
                     }
                 }
-                NodeMessage::Synced(SyncUpdate { tip, recent_history }) => {
+                NodeMessage::Synced(SyncUpdate {
+                    tip,
+                    recent_history,
+                }) => {
                     if self.chain_changeset.is_empty()
                         && self.cp.height() == tip.height
                         && self.cp.hash() == tip.hash
                     {
                         // return early if we're already synced
-                        tracing::info!("Done.");
+                        tracing::info!("No updates.");
                         return None;
                     }
-                    self.chain_changeset
-                        .insert(tip.height, Some(tip.hash));
+                    self.chain_changeset.insert(tip.height, Some(tip.hash));
 
                     tracing::info!("Synced to tip {} {}", tip.height, tip.hash);
                     break;
@@ -123,7 +131,6 @@ where
 
         let cp = self.update_chain()?;
         let indexed_tx_graph = mem::take(&mut self.graph);
-
         Some(Update {
             cp,
             indexed_tx_graph,
@@ -180,6 +187,19 @@ where
             })
             .await
             .map_err(Error::Client)
+    }
+
+    /// Add more scripts to the node. Could this just check a SPK index?
+    pub async fn add_scripts(&mut self, scripts: HashSet<ScriptBuf>) -> Result<(), Error> {
+        self.sender
+            .add_scripts(scripts)
+            .await
+            .map_err(Error::Client)
+    }
+
+    /// Run a node continuously in the background
+    pub fn run_node(&self, mut node: Node) {
+        let _ = tokio::task::spawn(async move { node.run().await });
     }
 
     /// Shutdown.

@@ -166,7 +166,7 @@ async fn main() -> anyhow::Result<()> {
             if let Some(bdk_kyoto::Update {
                 cp,
                 indexed_tx_graph,
-            }) = client.sync().await
+            }) = client.update().await
             {
                 let mut chain = chain.lock().unwrap();
                 let mut graph = graph.lock().unwrap();
