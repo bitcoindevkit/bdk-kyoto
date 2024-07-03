@@ -40,11 +40,8 @@ impl<'a> LightClientBuilder<'a> {
     }
 
     /// Add a wallet "birthday", or block to start searching for transactions _strictly after_.
-    pub fn add_birthday(mut self, birthday: HeaderCheckpoint) -> Self {
-        self.birthday = Some(CheckPoint::new(BlockId {
-            height: birthday.height,
-            hash: birthday.hash,
-        }));
+    pub fn add_birthday(mut self, birthday: CheckPoint) -> Self {
+        self.birthday = Some(birthday);
         self
     }
 

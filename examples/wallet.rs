@@ -6,6 +6,8 @@ use std::str::FromStr;
 
 use bdk_kyoto::builder::{LightClientBuilder, Peer};
 use bdk_wallet::bitcoin::{BlockHash, Network, ScriptBuf};
+use bdk_wallet::chain::local_chain::CheckPoint;
+use bdk_wallet::chain::BlockId;
 use bdk_wallet::{
     wallet::{self, Wallet},
     KeychainKind,
@@ -13,6 +15,14 @@ use bdk_wallet::{
 
 use kyoto::chain::checkpoints::{HeaderCheckpoint, SIGNET_HEADER_CP};
 use kyoto::node::builder::NodeBuilder;
+
+/// Peer address whitelist
+const PEERS: &[IpAddr] = &[
+    IpAddr::V4(Ipv4Addr::new(170, 75, 163, 219)),
+    IpAddr::V4(Ipv4Addr::new(23, 137, 57, 100)),
+];
+/// Bitcoin P2P port
+const PORT: u16 = 38333;
 
 /* Sync a bdk wallet */
 
@@ -24,18 +34,15 @@ async fn main() -> anyhow::Result<()> {
     let desc = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/0/*)";
     let change_desc = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/1/*)";
 
-    // We can use a predefined header if we don't have one
+    // We can use a predefined header if we don't have one. We use 170_000 here
     let (height, hash) = SIGNET_HEADER_CP.into_iter().rev().nth(3).unwrap();
-    let header_cp = HeaderCheckpoint::new(*height, BlockHash::from_str(&hash).unwrap());
+    let header_cp = CheckPoint::new(BlockId {
+        height: *height,
+        hash: BlockHash::from_str(hash).unwrap(),
+    });
 
     // Need to fix this on the Kyoto side. Port should be optional and this should be a struct
-    let port = 38333;
-    let peers = vec![
-        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
-        IpAddr::V4(Ipv4Addr::new(170, 75, 163, 219)),
-        IpAddr::V4(Ipv4Addr::new(23, 137, 57, 100)),
-    ];
-    let peers = peers.into_iter().map(|ip| Peer(ip, port)).collect();
+    let peers = PEERS.into_iter().map(|ip| Peer(*ip, PORT)).collect();
 
     let mut wallet = Wallet::new(desc, change_desc, Network::Signet)?;
 
@@ -45,13 +52,12 @@ async fn main() -> anyhow::Result<()> {
         .add_peers(peers)
         .build()
         .await;
+    client.run_node(node);
 
     tracing::info!(
         "Balance before sync: {} sats",
         wallet.balance().total().to_sat()
     );
-
-    client.run_node(node);
 
     // Sync and apply updates. We can do this a continual loop while the "application" is running.
     // Often this loop would be on a separate "Task" in a Swift app for instance
@@ -82,6 +88,4 @@ async fn main() -> anyhow::Result<()> {
             );
         }
     }
-
-    Ok(())
 }

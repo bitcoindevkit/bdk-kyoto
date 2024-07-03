@@ -199,7 +199,7 @@ where
 
     /// Run a node continuously in the background
     pub fn run_node(&self, mut node: Node) {
-        let _ = tokio::task::spawn(async move { node.run().await });
+        tokio::task::spawn(async move { node.run().await });
     }
 
     /// Shutdown.
