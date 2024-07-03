@@ -75,7 +75,7 @@ async fn main() -> anyhow::Result<()> {
                 last_active_indices: indexed_tx_graph.index.last_used_indices(),
             })?;
             // Do something here to add more scripts?
-
+            
             let cp = wallet.latest_checkpoint();
             tracing::info!("Tx count: {}", wallet.transactions().count());
             tracing::info!("Balance: {}", wallet.balance().total().to_sat());

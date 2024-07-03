@@ -124,8 +124,13 @@ where
                 }
                 NodeMessage::TxSent(_) => {}
                 NodeMessage::TxBroadcastFailure(_) => {}
-                NodeMessage::Dialog(s) => tracing::info!("{s}"),
-                NodeMessage::Warning(s) => tracing::warn!("{s}"),
+                NodeMessage::Dialog(s) => { 
+                    println!("{s}");
+                    tracing::info!("{s}") 
+                } ,
+                NodeMessage::Warning(s) => { 
+                    println!("{s}");
+                    tracing::warn!("{s}") },
             }
         }
 
