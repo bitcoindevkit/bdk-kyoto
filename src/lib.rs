@@ -6,11 +6,10 @@
 use bdk_wallet::KeychainKind;
 use core::fmt;
 use core::mem;
-use kyoto::node::messages::SyncUpdate;
-use kyoto::node::node::Node;
-use kyoto::ScriptBuf;
+pub use kyoto::node::messages::SyncUpdate;
+pub use kyoto::ScriptBuf;
 use std::collections::HashSet;
-use tokio::sync::broadcast;
+pub use tokio::sync::broadcast;
 
 use bdk_wallet::bitcoin::{BlockHash, Transaction};
 
@@ -21,9 +20,11 @@ use bdk_wallet::chain::{
     BlockId, ConfirmationTimeHeightAnchor, IndexedTxGraph,
 };
 
-use kyoto::node::{self, messages::NodeMessage};
-use kyoto::IndexedBlock;
-use kyoto::TxBroadcast;
+pub use kyoto::node::{self, messages::NodeMessage};
+pub use kyoto::IndexedBlock;
+pub use kyoto::TxBroadcast;
+pub use kyoto::TrustedPeer;
+pub use kyoto::node::node::Node;
 
 pub mod builder;
 
