@@ -142,7 +142,13 @@ async fn main() -> anyhow::Result<()> {
             // Configure kyoto node
             let builder = NodeBuilder::new(Network::Signet);
             let (mut node, client) = builder
-                .add_peers(PEERS.iter().cloned().map(|ip| (ip, PORT)).collect())
+                .add_peers(
+                    PEERS
+                        .iter()
+                        .cloned()
+                        .map(|ip| (ip, Some(PORT)).into())
+                        .collect(),
+                )
                 .add_scripts(spks)
                 .anchor_checkpoint(header_cp)
                 .num_required_peers(2)

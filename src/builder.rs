@@ -9,7 +9,7 @@ use bdk_wallet::{
 use kyoto::{
     chain::checkpoints::HeaderCheckpoint,
     node::{builder::NodeBuilder, node::Node},
-    ScriptBuf,
+    ScriptBuf, TrustedPeer,
 };
 
 use crate::{Client, Request};
@@ -23,7 +23,7 @@ const TARGET_INDEX: u32 = 100;
 /// Construct a light client from higher level components.
 pub struct LightClientBuilder<'a> {
     wallet: &'a Wallet,
-    peers: Option<Vec<Peer>>,
+    peers: Option<Vec<TrustedPeer>>,
     required_peers: Option<u8>,
     birthday: Option<CheckPoint>,
 }
@@ -46,7 +46,7 @@ impl<'a> LightClientBuilder<'a> {
     }
 
     /// Add peers to connect to over the P2P network.
-    pub fn add_peers(mut self, peers: Vec<Peer>) -> Self {
+    pub fn add_peers(mut self, peers: Vec<TrustedPeer>) -> Self {
         self.peers = Some(peers);
         self
     }
@@ -55,8 +55,7 @@ impl<'a> LightClientBuilder<'a> {
     pub async fn build(self) -> (Node, Client<KeychainKind>) {
         let mut node_builder = NodeBuilder::new(self.wallet.network());
         if let Some(whitelist) = self.peers {
-            let peers = whitelist.iter().map(|peer| (peer.0, peer.1)).collect();
-            node_builder = node_builder.add_peers(peers);
+            node_builder = node_builder.add_peers(whitelist);
         }
         match self.birthday {
             Some(birthday) => {

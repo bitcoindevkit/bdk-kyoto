@@ -15,14 +15,13 @@ use bdk_wallet::{
 
 use kyoto::chain::checkpoints::{HeaderCheckpoint, SIGNET_HEADER_CP};
 use kyoto::node::builder::NodeBuilder;
+use kyoto::TrustedPeer;
 
 /// Peer address whitelist
 const PEERS: &[IpAddr] = &[
     IpAddr::V4(Ipv4Addr::new(170, 75, 163, 219)),
     IpAddr::V4(Ipv4Addr::new(23, 137, 57, 100)),
 ];
-/// Bitcoin P2P port
-const PORT: u16 = 38333;
 
 /* Sync a bdk wallet */
 
@@ -41,8 +40,10 @@ async fn main() -> anyhow::Result<()> {
         hash: BlockHash::from_str(hash).unwrap(),
     });
 
-    // Need to fix this on the Kyoto side. Port should be optional and this should be a struct
-    let peers = PEERS.into_iter().map(|ip| Peer(*ip, PORT)).collect();
+    let peers = PEERS
+        .into_iter()
+        .map(|ip| TrustedPeer::new(*ip, None))
+        .collect();
 
     let mut wallet = Wallet::new(desc, change_desc, Network::Signet)?;
 
