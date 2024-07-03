@@ -55,7 +55,7 @@ async fn main() -> anyhow::Result<()> {
 
     let builder = NodeBuilder::new(Network::Signet);
     let (mut node, client) = builder
-        .add_peers(peers.into_iter().map(|ip| (ip, 38333)).collect())
+        .add_peers(peers.into_iter().map(|ip| (ip, None).into()).collect())
         .add_scripts(spks_to_watch)
         .anchor_checkpoint(HeaderCheckpoint::new(
             169_000,
@@ -77,7 +77,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Sync and apply updates
-    if let Some(update) = client.sync().await {
+    if let Some(update) = client.update().await {
         let bdk_kyoto::Update {
             cp,
             indexed_tx_graph,
