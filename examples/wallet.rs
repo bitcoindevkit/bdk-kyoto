@@ -48,7 +48,7 @@ async fn main() -> anyhow::Result<()> {
     let mut wallet = Wallet::new(desc, change_desc, Network::Signet)?;
 
     // The light client builder handles the logic of inserting the SPKs
-    let (node, mut client) = LightClientBuilder::new(&wallet)
+    let (node, mut client) = LightClientBuilder::new()
         .add_birthday(header_cp)
         .add_peers(peers)
         .build()

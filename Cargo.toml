@@ -3,8 +3,8 @@ name = "bdk_kyoto"
 version = "0.1.0"
 edition = "2021"
 
-[[bin]]
-name = "example_kyoto"
+# [[bin]]
+# name = "example_kyoto"
 
 [dependencies]
 anyhow = "1.0"
@@ -18,12 +18,11 @@ rev = "526a8dcf88bbce8c029426b45cbd941700ad1aa2"
 
 [dependencies.bdk_wallet]
 # version alpha.13
-git = "https://github.com/bitcoindevkit/bdk"
-rev = "05438017876c3338d091ca85e52242b455e2193a"
+version = "1.0.0-alpha.13"
 
-[dependencies.example_cli]
-git = "https://github.com/bitcoindevkit/bdk"
-rev = "05438017876c3338d091ca85e52242b455e2193a"
+# [dependencies.example_cli]
+# git = "https://github.com/bitcoindevkit/bdk"
+# rev = "05438017876c3338d091ca85e52242b455e2193a"
 
 [[example]]
 name = "signet"
