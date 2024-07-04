@@ -94,7 +94,7 @@ where
                 NodeMessage::Block(IndexedBlock { height, block }) => {
                     let hash = block.header.block_hash();
                     self.chain_changeset.insert(height, Some(hash));
-
+                    println!("Applying block {hash}");
                     tracing::info!("Applying Block: {hash}");
                     let _ = self.graph.apply_block_relevant(&block, height);
                 }
