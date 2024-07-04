@@ -85,11 +85,6 @@ impl<'a> LightClientBuilder<'a> {
         }
         let (node, kyoto_client) = node_builder.add_scripts(spks).build_node().await;
         let request = Request::new(self.wallet.local_chain().tip(), self.wallet.spk_index());
-        let client = request.into_client(kyoto_client);
-        (node, client)
+        (node, Client::from_request(request, kyoto_client))
     }
 }
-
-#[derive(Debug, Clone, Copy)]
-/// A peer to connect to on the Bitcoin P2P network
-pub struct Peer(pub IpAddr, pub u16);

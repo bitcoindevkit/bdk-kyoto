@@ -20,11 +20,11 @@ use bdk_wallet::chain::{
     BlockId, ConfirmationTimeHeightAnchor, IndexedTxGraph,
 };
 
+pub use kyoto::node::node::Node;
 pub use kyoto::node::{self, messages::NodeMessage};
 pub use kyoto::IndexedBlock;
-pub use kyoto::TxBroadcast;
 pub use kyoto::TrustedPeer;
-pub use kyoto::node::node::Node;
+pub use kyoto::TxBroadcast;
 
 pub mod builder;
 
@@ -87,6 +87,22 @@ impl<K> Client<K>
 where
     K: fmt::Debug + Clone + Ord,
 {
+    /// Build a light client from a request and Kyoto Client
+    pub fn from_request(request: Request<K>, mut client: node::client::Client) -> Self {
+        let mut index = KeychainTxOutIndex::default();
+        for (keychain, descriptor) in request.index.keychains() {
+            let _ = index.insert_descriptor(keychain.clone(), descriptor.clone());
+        }
+        let (sender, receiver) = client.split();
+        Self {
+            sender,
+            receiver,
+            chain_changeset: BTreeMap::new(),
+            cp: request.cp,
+            graph: IndexedTxGraph::new(index),
+        }
+    }
+
     /// Sync.
     pub async fn update(&mut self) -> Option<Update<K>> {
         while let Ok(message) = self.receiver.recv().await {
@@ -124,11 +140,12 @@ where
                 }
                 NodeMessage::TxSent(_) => {}
                 NodeMessage::TxBroadcastFailure(_) => {}
-                NodeMessage::Dialog(s) => { 
-                    tracing::info!("{s}") 
-                } ,
-                NodeMessage::Warning(s) => { 
-                    tracing::warn!("{s}") },
+                NodeMessage::Dialog(s) => {
+                    tracing::info!("{s}")
+                }
+                NodeMessage::Warning(s) => {
+                    tracing::warn!("{s}")
+                }
             }
         }
 
@@ -192,6 +209,11 @@ where
             .map_err(Error::Client)
     }
 
+    /// Get a struct to broadcast transactions
+    pub fn transaction_broadcaster(&self) -> TransactionBroadcaster {
+        TransactionBroadcaster::new(self.sender.clone())
+    }
+
     /// Add more scripts to the node. Could this just check a SPK index?
     pub async fn add_scripts(&mut self, scripts: HashSet<ScriptBuf>) -> Result<(), Error> {
         self.sender
@@ -213,6 +235,30 @@ pub struct Update<K> {
     pub cp: CheckPoint,
     /// `IndexedTxGraph`
     pub indexed_tx_graph: IndexedTxGraph<ConfirmationTimeHeightAnchor, KeychainTxOutIndex<K>>,
+}
+
+/// Broadcast transactions to the network.
+#[derive(Debug)]
+pub struct TransactionBroadcaster {
+    sender: node::client::ClientSender,
+}
+
+impl TransactionBroadcaster {
+    fn new(sender: node::client::ClientSender) -> Self {
+        Self { sender }
+    }
+
+    async fn broadcast(&mut self, tx: &Transaction) -> Result<(), Error> {
+        use kyoto::TxBroadcastPolicy::*;
+
+        self.sender
+            .broadcast_tx(TxBroadcast {
+                tx: tx.clone(),
+                broadcast_policy: AllPeers,
+            })
+            .await
+            .map_err(Error::Client)
+    }
 }
 
 /// Crate error.
