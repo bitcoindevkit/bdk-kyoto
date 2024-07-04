@@ -200,11 +200,6 @@ where
             .map_err(Error::Client)
     }
 
-    /// Run a node continuously in the background
-    pub fn run_node(&self, mut node: Node) {
-        tokio::task::spawn(async move { node.run().await });
-    }
-
     /// Shutdown.
     pub async fn shutdown(&mut self) -> Result<(), Error> {
         self.sender.shutdown().await.map_err(Error::Client)
