@@ -20,11 +20,11 @@ use bdk_wallet::chain::{
     BlockId, ConfirmationTimeHeightAnchor, IndexedTxGraph,
 };
 
+pub use kyoto::node::node::Node;
 pub use kyoto::node::{self, messages::NodeMessage};
 pub use kyoto::IndexedBlock;
-pub use kyoto::TxBroadcast;
 pub use kyoto::TrustedPeer;
-pub use kyoto::node::node::Node;
+pub use kyoto::TxBroadcast;
 
 pub mod builder;
 
@@ -125,13 +125,14 @@ where
                 }
                 NodeMessage::TxSent(_) => {}
                 NodeMessage::TxBroadcastFailure(_) => {}
-                NodeMessage::Dialog(s) => { 
+                NodeMessage::Dialog(s) => {
                     println!("{s}");
-                    tracing::info!("{s}") 
-                } ,
-                NodeMessage::Warning(s) => { 
+                    tracing::info!("{s}")
+                }
+                NodeMessage::Warning(s) => {
                     println!("{s}");
-                    tracing::warn!("{s}") },
+                    tracing::warn!("{s}")
+                }
             }
         }
 

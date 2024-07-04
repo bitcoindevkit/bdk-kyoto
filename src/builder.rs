@@ -7,7 +7,9 @@ use bdk_wallet::{
     KeychainKind, Wallet,
 };
 use kyoto::{
-    chain::checkpoints::HeaderCheckpoint, node::{builder::NodeBuilder, node::Node}, BlockHash, ScriptBuf, TrustedPeer
+    chain::checkpoints::HeaderCheckpoint,
+    node::{builder::NodeBuilder, node::Node},
+    Address, BlockHash, ScriptBuf, TrustedPeer,
 };
 
 use crate::{Client, Request};
@@ -53,10 +55,24 @@ impl LightClientBuilder {
         if let Some(whitelist) = self.peers {
             node_builder = node_builder.add_peers(whitelist);
         }
-        let cp = HeaderCheckpoint::new(170_000, BlockHash::from_str("00000041c812a89f084f633e4cf47e819a2f6b1c0a15162355a930410522c99d").unwrap());
-        let checkpoint = CheckPoint::new(BlockId { height: cp.height, hash: cp.hash });
+        let mut set = HashSet::new();
+        let address = Address::from_str("tb1q9pvjqz5u5sdgpatg3wn0ce438u5cyv85lly0pc")
+            .unwrap()
+            .require_network(kyoto::Network::Signet)
+            .unwrap()
+            .into();
+        set.insert(address);
+        let cp = HeaderCheckpoint::new(
+            170_000,
+            BlockHash::from_str("00000041c812a89f084f633e4cf47e819a2f6b1c0a15162355a930410522c99d")
+                .unwrap(),
+        );
+        let checkpoint = CheckPoint::new(BlockId {
+            height: cp.height,
+            hash: cp.hash,
+        });
         node_builder = node_builder.num_required_peers(self.required_peers.unwrap_or(2));
-        let (node, kyoto_client) = node_builder.build_node().await;
+        let (node, kyoto_client) = node_builder.add_scripts(set).build_node().await;
         let tx_index = &KeychainTxOutIndex::new(10);
         let request = Request::new(checkpoint, tx_index);
         let client = request.into_client(kyoto_client);
