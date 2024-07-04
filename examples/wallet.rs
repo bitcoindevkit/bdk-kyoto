@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 
-use bdk_kyoto::builder::{LightClientBuilder, Peer};
+use bdk_kyoto::builder::LightClientBuilder;
 use bdk_wallet::bitcoin::{BlockHash, Network, ScriptBuf};
 use bdk_wallet::chain::local_chain::CheckPoint;
 use bdk_wallet::chain::BlockId;
@@ -53,7 +53,7 @@ async fn main() -> anyhow::Result<()> {
         .add_peers(peers)
         .build()
         .await;
-    
+
     tokio::task::spawn(async move { node.run().await });
 
     tracing::info!(
@@ -76,7 +76,7 @@ async fn main() -> anyhow::Result<()> {
                 last_active_indices: indexed_tx_graph.index.last_used_indices(),
             })?;
             // Do something here to add more scripts?
-            
+
             let cp = wallet.latest_checkpoint();
             tracing::info!("Tx count: {}", wallet.transactions().count());
             tracing::info!("Balance: {}", wallet.balance().total().to_sat());
