@@ -209,6 +209,11 @@ where
             .map_err(Error::Client)
     }
 
+    /// Get a struct to broadcast transactions
+    pub fn transaction_broadcaster(&self) -> TransactionBroadcaster {
+        TransactionBroadcaster::new(self.sender.clone())
+    }
+
     /// Add more scripts to the node. Could this just check a SPK index?
     pub async fn add_scripts(&mut self, scripts: HashSet<ScriptBuf>) -> Result<(), Error> {
         self.sender
