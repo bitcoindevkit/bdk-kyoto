@@ -48,12 +48,13 @@ async fn main() -> anyhow::Result<()> {
     let mut wallet = Wallet::new(desc, change_desc, Network::Signet)?;
 
     // The light client builder handles the logic of inserting the SPKs
-    let (node, mut client) = LightClientBuilder::new(&wallet)
+    let (mut node, mut client) = LightClientBuilder::new(&wallet)
         .add_birthday(header_cp)
         .add_peers(peers)
         .build()
         .await;
-    client.run_node(node);
+    
+    tokio::task::spawn(async move { node.run().await });
 
     tracing::info!(
         "Balance before sync: {} sats",

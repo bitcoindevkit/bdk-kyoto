@@ -126,11 +126,9 @@ where
                 NodeMessage::TxSent(_) => {}
                 NodeMessage::TxBroadcastFailure(_) => {}
                 NodeMessage::Dialog(s) => { 
-                    println!("{s}");
                     tracing::info!("{s}") 
                 } ,
                 NodeMessage::Warning(s) => { 
-                    println!("{s}");
                     tracing::warn!("{s}") },
             }
         }
@@ -201,11 +199,6 @@ where
             .add_scripts(scripts)
             .await
             .map_err(Error::Client)
-    }
-
-    /// Run a node continuously in the background
-    pub fn run_node(&self, mut node: Node) {
-        tokio::task::spawn(async move { node.run().await });
     }
 
     /// Shutdown.
