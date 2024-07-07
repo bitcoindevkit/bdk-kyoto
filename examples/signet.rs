@@ -64,8 +64,7 @@ async fn main() -> anyhow::Result<()> {
             )?,
         ))
         .num_required_peers(2)
-        .build_node()
-        .await;
+        .build_node();
 
     // Start a sync `Request`
     let req = bdk_kyoto::Request::new(chain.tip(), &graph.index);

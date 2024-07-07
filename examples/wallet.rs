@@ -51,8 +51,7 @@ async fn main() -> anyhow::Result<()> {
     let (mut node, mut client) = LightClientBuilder::new(&wallet)
         .add_birthday(header_cp)
         .add_peers(peers)
-        .build()
-        .await;
+        .build();
 
     tokio::task::spawn(async move { node.run().await });
 

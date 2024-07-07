@@ -52,7 +52,7 @@ impl<'a> LightClientBuilder<'a> {
     }
 
     /// Build a light client node and a client to interact with the node
-    pub async fn build(self) -> (Node, Client<KeychainKind>) {
+    pub fn build(self) -> (Node, Client<KeychainKind>) {
         let mut node_builder = NodeBuilder::new(self.wallet.network());
         if let Some(whitelist) = self.peers {
             node_builder = node_builder.add_peers(whitelist);
@@ -83,7 +83,7 @@ impl<'a> LightClientBuilder<'a> {
                 spks.insert(self.wallet.peek_address(keychain, index).script_pubkey());
             }
         }
-        let (node, kyoto_client) = node_builder.add_scripts(spks).build_node().await;
+        let (node, kyoto_client) = node_builder.add_scripts(spks).build_node();
         let request = Request::new(self.wallet.local_chain().tip(), self.wallet.spk_index());
         (node, Client::from_request(request, kyoto_client))
     }
