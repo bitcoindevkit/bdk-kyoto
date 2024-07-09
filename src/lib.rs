@@ -138,6 +138,9 @@ where
                     tracing::info!("Synced to tip {} {}", tip.height, tip.hash);
                     break;
                 }
+                NodeMessage::StateChange(s) => {
+                    tracing::info!("The node changed state to: {s:?}");
+                }
                 NodeMessage::TxSent(_) => {}
                 NodeMessage::TxBroadcastFailure(_) => {}
                 NodeMessage::Dialog(s) => {
