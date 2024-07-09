@@ -11,7 +11,7 @@ tracing-subscriber = "0.3"
 
 [dependencies.kyoto]
 git = "https://github.com/rustaceanrob/kyoto"
-rev = "872012ed33b2da689fd0aa59fc55af25a974ddec"
+rev = "73d841f761e96a2dd0cb2541200825ff8311266d"
 
 [dependencies.bdk_wallet]
 version = "1.0.0-alpha.13"
