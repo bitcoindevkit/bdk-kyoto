@@ -1,5 +1,7 @@
 #![allow(unused)]
 
+use bdk_kyoto::Client;
+use bdk_wallet::KeychainKind;
 use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
@@ -65,10 +67,7 @@ async fn main() -> anyhow::Result<()> {
         ))
         .num_required_peers(2)
         .build_node();
-
-    // Start a sync `Request`
-    let req = bdk_kyoto::Request::new(chain.tip(), &graph.index);
-    let mut client = req.into_client(client);
+    let mut client: Client<usize> = Client::from_index(chain.tip(), &graph.index, client);
 
     // Run the `Node`
     if !node.is_running() {
@@ -77,13 +76,8 @@ async fn main() -> anyhow::Result<()> {
 
     // Sync and apply updates
     if let Some(update) = client.update().await {
-        let bdk_kyoto::Update {
-            cp,
-            indexed_tx_graph,
-        } = update;
-
-        let _ = chain.apply_update(cp)?;
-        let _ = graph.apply_changeset(indexed_tx_graph.initial_changeset());
+        let _ = chain.apply_update(update.chain_update)?;
+        let _ = graph.apply_changeset(update.graph_update.initial_changeset().into());
     }
 
     // Shutdown

@@ -1,13 +1,11 @@
 //! bdk_kyoto
-
 #![allow(unused)]
 #![warn(missing_docs)]
 
-use bdk_wallet::KeychainKind;
+use bdk_wallet::chain::spk_client::FullScanResult;
 use core::fmt;
 use core::mem;
-pub use kyoto::node::messages::SyncUpdate;
-pub use kyoto::ScriptBuf;
+use kyoto::node::client::Receiver;
 use std::collections::HashSet;
 pub use tokio::sync::broadcast;
 
@@ -20,53 +18,19 @@ use bdk_wallet::chain::{
     BlockId, ConfirmationTimeHeightAnchor, IndexedTxGraph,
 };
 
+pub use kyoto::node::messages::SyncUpdate;
 pub use kyoto::node::node::Node;
 pub use kyoto::node::{self, messages::NodeMessage};
 pub use kyoto::IndexedBlock;
+pub use kyoto::ScriptBuf;
 pub use kyoto::TrustedPeer;
 pub use kyoto::TxBroadcast;
+pub use kyoto::TxBroadcastPolicy;
 
 pub mod builder;
 
 /// Block height
 type Height = u32;
-
-/// Request.
-#[derive(Debug)]
-pub struct Request<'a, K> {
-    cp: CheckPoint,
-    index: &'a KeychainTxOutIndex<K>,
-}
-
-impl<'a, K> Request<'a, K>
-where
-    K: fmt::Debug + Clone + Ord,
-{
-    /// New.
-    pub fn new(cp: CheckPoint, index: &'a KeychainTxOutIndex<K>) -> Self {
-        Self { cp, index }
-    }
-
-    /// Into [`Client`].
-    pub fn into_client(self, mut client: node::client::Client) -> Client<K> {
-        let mut index = KeychainTxOutIndex::default();
-
-        // clone the keychains given by the request
-        for (keychain, descriptor) in self.index.keychains() {
-            let _ = index.insert_descriptor(keychain.clone(), descriptor.clone());
-        }
-
-        let (sender, receiver) = client.split();
-
-        Client {
-            sender,
-            receiver,
-            chain_changeset: BTreeMap::new(),
-            cp: self.cp,
-            graph: IndexedTxGraph::new(index),
-        }
-    }
-}
 
 /// Client.
 #[derive(Debug)]
@@ -87,24 +51,24 @@ impl<K> Client<K>
 where
     K: fmt::Debug + Clone + Ord,
 {
-    /// Build a light client from a request and Kyoto Client
-    pub fn from_request(request: Request<K>, mut client: node::client::Client) -> Self {
-        let mut index = KeychainTxOutIndex::default();
-        for (keychain, descriptor) in request.index.keychains() {
-            let _ = index.insert_descriptor(keychain.clone(), descriptor.clone());
-        }
+    /// Build a light client from an `KeychainTxOutIndex` and checkpoint
+    pub fn from_index(
+        cp: CheckPoint,
+        index: &KeychainTxOutIndex<K>,
+        client: node::client::Client,
+    ) -> Self {
         let (sender, receiver) = client.split();
         Self {
             sender,
             receiver,
             chain_changeset: BTreeMap::new(),
-            cp: request.cp,
-            graph: IndexedTxGraph::new(index),
+            cp,
+            graph: IndexedTxGraph::new(index.clone()),
         }
     }
 
     /// Sync.
-    pub async fn update(&mut self) -> Option<Update<K>> {
+    pub async fn update(&mut self) -> Option<FullScanResult<K>> {
         while let Ok(message) = self.receiver.recv().await {
             match message {
                 NodeMessage::Block(IndexedBlock { height, block }) => {
@@ -123,7 +87,7 @@ where
                 }
                 NodeMessage::Synced(SyncUpdate {
                     tip,
-                    recent_history,
+                    recent_history: _,
                 }) => {
                     if self.chain_changeset.is_empty()
                         && self.cp.height() == tip.height
@@ -154,9 +118,10 @@ where
 
         let cp = self.update_chain()?;
         let indexed_tx_graph = mem::take(&mut self.graph);
-        Some(Update {
-            cp,
-            indexed_tx_graph,
+        Some(FullScanResult {
+            graph_update: indexed_tx_graph.graph().clone(),
+            chain_update: cp,
+            last_active_indices: indexed_tx_graph.index.last_used_indices(),
         })
     }
 
@@ -200,25 +165,22 @@ where
     }
 
     /// Broadcast a [`Transaction`].
-    pub async fn broadcast(&mut self, tx: &Transaction) -> Result<(), Error> {
-        use kyoto::TxBroadcastPolicy::*;
-
+    pub async fn broadcast(
+        &self,
+        tx: &Transaction,
+        policy: TxBroadcastPolicy,
+    ) -> Result<(), Error> {
         self.sender
             .broadcast_tx(TxBroadcast {
                 tx: tx.clone(),
-                broadcast_policy: AllPeers,
+                broadcast_policy: policy,
             })
             .await
             .map_err(Error::Client)
     }
 
-    /// Get a struct to broadcast transactions
-    pub fn transaction_broadcaster(&self) -> TransactionBroadcaster {
-        TransactionBroadcaster::new(self.sender.clone())
-    }
-
     /// Add more scripts to the node. Could this just check a SPK index?
-    pub async fn add_scripts(&mut self, scripts: HashSet<ScriptBuf>) -> Result<(), Error> {
+    pub async fn add_scripts(&self, scripts: HashSet<ScriptBuf>) -> Result<(), Error> {
         self.sender
             .add_scripts(scripts)
             .await
@@ -226,18 +188,19 @@ where
     }
 
     /// Shutdown.
-    pub async fn shutdown(&mut self) -> Result<(), Error> {
+    pub async fn shutdown(&self) -> Result<(), Error> {
         self.sender.shutdown().await.map_err(Error::Client)
     }
-}
 
-/// Update.
-#[derive(Debug)]
-pub struct Update<K> {
-    /// `CheckPoint`
-    pub cp: CheckPoint,
-    /// `IndexedTxGraph`
-    pub indexed_tx_graph: IndexedTxGraph<ConfirmationTimeHeightAnchor, KeychainTxOutIndex<K>>,
+    /// Get a struct to broadcast transactions
+    pub fn transaction_broadcaster(&self) -> TransactionBroadcaster {
+        TransactionBroadcaster::new(self.sender.clone())
+    }
+
+    /// Get the underlying channel receiver
+    pub fn channel_receiver(&mut self) -> &mut Receiver<NodeMessage> {
+        &mut self.receiver
+    }
 }
 
 /// Broadcast transactions to the network.
@@ -251,13 +214,15 @@ impl TransactionBroadcaster {
         Self { sender }
     }
 
-    async fn broadcast(&mut self, tx: &Transaction) -> Result<(), Error> {
-        use kyoto::TxBroadcastPolicy::*;
-
+    async fn broadcast(
+        &mut self,
+        tx: &Transaction,
+        policy: TxBroadcastPolicy,
+    ) -> Result<(), Error> {
         self.sender
             .broadcast_tx(TxBroadcast {
                 tx: tx.clone(),
-                broadcast_policy: AllPeers,
+                broadcast_policy: policy,
             })
             .await
             .map_err(Error::Client)

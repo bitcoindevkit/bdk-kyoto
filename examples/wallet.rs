@@ -33,7 +33,6 @@ async fn main() -> anyhow::Result<()> {
     let desc = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/0/*)";
     let change_desc = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/1/*)";
 
-    // We can use a predefined header if we don't have one. We use 170_000 here
     let (height, hash) = SIGNET_HEADER_CP.into_iter().rev().nth(3).unwrap();
     let header_cp = CheckPoint::new(BlockId {
         height: *height,
@@ -42,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
 
     let peers = PEERS
         .into_iter()
-        .map(|ip| TrustedPeer::new(*ip, None))
+        .map(|ip| TrustedPeer::from_ip(*ip))
         .collect();
 
     let mut wallet = Wallet::new(desc, change_desc, Network::Signet)?;
@@ -64,19 +63,8 @@ async fn main() -> anyhow::Result<()> {
     // Often this loop would be on a separate "Task" in a Swift app for instance
     loop {
         if let Some(update) = client.update().await {
-            let bdk_kyoto::Update {
-                cp,
-                indexed_tx_graph,
-            } = update;
-
-            wallet.apply_update(wallet::Update {
-                chain: Some(cp),
-                graph: indexed_tx_graph.graph().clone(),
-                last_active_indices: indexed_tx_graph.index.last_used_indices(),
-            })?;
+            wallet.apply_update(update)?;
             // Do something here to add more scripts?
-
-            let cp = wallet.latest_checkpoint();
             tracing::info!("Tx count: {}", wallet.transactions().count());
             tracing::info!("Balance: {}", wallet.balance().total().to_sat());
             tracing::info!(
