@@ -5,6 +5,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 
 use bdk_kyoto::builder::LightClientBuilder;
+use bdk_kyoto::handler::TraceLogger;
 use bdk_wallet::bitcoin::{BlockHash, Network, ScriptBuf};
 use bdk_wallet::chain::local_chain::CheckPoint;
 use bdk_wallet::chain::BlockId;
@@ -50,6 +51,7 @@ async fn main() -> anyhow::Result<()> {
     let (mut node, mut client) = LightClientBuilder::new(&wallet)
         .add_birthday(header_cp)
         .add_peers(peers)
+        .logger(TraceLogger::new())
         .build();
 
     tokio::task::spawn(async move { node.run().await });

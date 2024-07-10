@@ -1,5 +1,6 @@
 #![allow(unused)]
 
+use bdk_kyoto::handler::PrintLogger;
 use bdk_kyoto::Client;
 use bdk_wallet::KeychainKind;
 use std::collections::HashSet;
@@ -46,9 +47,6 @@ async fn main() -> anyhow::Result<()> {
         spks_to_watch.extend(&mut spks);
     }
 
-    let subscriber = tracing_subscriber::FmtSubscriber::new();
-    tracing::subscriber::set_global_default(subscriber).unwrap();
-
     let peers = vec![
         IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
         IpAddr::V4(Ipv4Addr::new(170, 75, 163, 219)),
@@ -60,14 +58,14 @@ async fn main() -> anyhow::Result<()> {
         .add_peers(peers.into_iter().map(|ip| (ip, None).into()).collect())
         .add_scripts(spks_to_watch)
         .anchor_checkpoint(HeaderCheckpoint::new(
-            169_000,
+            170_000,
             BlockHash::from_str(
-                "000000ed6fe89c46140f55ff511c558bcbdb1239ba95474f38f619b3bb657d4a",
+                "00000041c812a89f084f633e4cf47e819a2f6b1c0a15162355a930410522c99d",
             )?,
         ))
         .num_required_peers(2)
         .build_node();
-    let mut client: Client<usize> = Client::from_index(chain.tip(), &graph.index, client);
+    let mut client: Client<usize> = Client::from_index(chain.tip(), &graph.index, client, Some(Box::new(PrintLogger::new())));
 
     // Run the `Node`
     if !node.is_running() {

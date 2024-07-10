@@ -9,7 +9,7 @@ use kyoto::{
     ScriptBuf, TrustedPeer,
 };
 
-use crate::Client;
+use crate::{handler::{NodeMessageHandler, PrintLogger}, Client};
 
 const TARGET_INDEX: u32 = 20;
 const RECOMMENDED_PEERS: u8 = 2;
@@ -21,6 +21,7 @@ pub struct LightClientBuilder<'a> {
     peers: Option<Vec<TrustedPeer>>,
     connections: Option<u8>,
     birthday: Option<CheckPoint>,
+    message_handler: Option<Box<dyn NodeMessageHandler + Send + Sync + 'static>>
 }
 
 impl<'a> LightClientBuilder<'a> {
@@ -31,6 +32,7 @@ impl<'a> LightClientBuilder<'a> {
             peers: None,
             connections: None,
             birthday: None,
+            message_handler: None,
         }
     }
 
@@ -49,6 +51,12 @@ impl<'a> LightClientBuilder<'a> {
     /// Add the number of connections for the node to maintain.
     pub fn connections(mut self, num_connections: u8) -> Self {
         self.connections = Some(num_connections);
+        self
+    }
+
+    /// Handle messages from the node
+    pub fn logger(mut self, message_handler: impl NodeMessageHandler + Send + Sync + 'static) -> Self {
+        self.message_handler = Some(Box::new(message_handler));
         self
     }
 
@@ -96,6 +104,7 @@ impl<'a> LightClientBuilder<'a> {
             self.wallet.local_chain().tip(),
             self.wallet.spk_index(),
             kyoto_client,
+            self.message_handler
         );
         (node, client)
     }
