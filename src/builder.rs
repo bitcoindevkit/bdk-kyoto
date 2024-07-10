@@ -1,30 +1,25 @@
 //! [`bdk_kyoto::Client`] builder
 
-use std::{collections::HashSet, net::IpAddr};
+use std::collections::HashSet;
 
-use bdk_wallet::{
-    chain::{local_chain::CheckPoint, BlockId},
-    KeychainKind, Wallet,
-};
+use bdk_wallet::{chain::local_chain::CheckPoint, KeychainKind, Wallet};
 use kyoto::{
     chain::checkpoints::HeaderCheckpoint,
     node::{builder::NodeBuilder, node::Node},
     ScriptBuf, TrustedPeer,
 };
 
-use crate::{Client, Request};
+use crate::Client;
 
-// There is very little cost to doing a lookahead this generous.
-// By doing so, a user can reveal many scripts without ever having
-// to add them on the fly to the node.
-const TARGET_INDEX: u32 = 100;
+const TARGET_INDEX: u32 = 20;
+const RECOMMENDED_PEERS: u8 = 2;
 
 #[derive(Debug)]
 /// Construct a light client from higher level components.
 pub struct LightClientBuilder<'a> {
     wallet: &'a Wallet,
     peers: Option<Vec<TrustedPeer>>,
-    required_peers: Option<u8>,
+    connections: Option<u8>,
     birthday: Option<CheckPoint>,
 }
 
@@ -34,7 +29,7 @@ impl<'a> LightClientBuilder<'a> {
         Self {
             wallet,
             peers: None,
-            required_peers: None,
+            connections: None,
             birthday: None,
         }
     }
@@ -48,6 +43,12 @@ impl<'a> LightClientBuilder<'a> {
     /// Add peers to connect to over the P2P network.
     pub fn add_peers(mut self, peers: Vec<TrustedPeer>) -> Self {
         self.peers = Some(peers);
+        self
+    }
+
+    /// Add the number of connections for the node to maintain.
+    pub fn connections(mut self, num_connections: u8) -> Self {
+        self.connections = Some(num_connections);
         self
     }
 
@@ -76,10 +77,17 @@ impl<'a> LightClientBuilder<'a> {
                 node_builder = node_builder.anchor_checkpoint(header_cp)
             }
         }
-        node_builder = node_builder.num_required_peers(self.required_peers.unwrap_or(2));
+        node_builder =
+            node_builder.num_required_peers(self.connections.unwrap_or(RECOMMENDED_PEERS));
         let mut spks: HashSet<ScriptBuf> = HashSet::new();
         for keychain in [KeychainKind::External, KeychainKind::Internal] {
-            for index in 0..=TARGET_INDEX {
+            for index in 0..=self
+                .wallet
+                .spk_index()
+                .last_revealed_index(&keychain)
+                .unwrap_or(0)
+                + TARGET_INDEX
+            {
                 spks.insert(self.wallet.peek_address(keychain, index).script_pubkey());
             }
         }
