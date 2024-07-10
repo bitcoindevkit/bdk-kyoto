@@ -64,18 +64,8 @@ async fn main() -> anyhow::Result<()> {
     // Often this loop would be on a separate "Task" in a Swift app for instance
     loop {
         if let Some(update) = client.update().await {
-            let bdk_kyoto::Update {
-                cp,
-                indexed_tx_graph,
-            } = update;
-
-            wallet.apply_update(wallet::Update {
-                chain: Some(cp),
-                graph: indexed_tx_graph.graph().clone(),
-                last_active_indices: indexed_tx_graph.index.last_used_indices(),
-            })?;
+            wallet.apply_update(update)?;
             // Do something here to add more scripts?
-
             let cp = wallet.latest_checkpoint();
             tracing::info!("Tx count: {}", wallet.transactions().count());
             tracing::info!("Balance: {}", wallet.balance().total().to_sat());

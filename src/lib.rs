@@ -3,9 +3,11 @@
 #![allow(unused)]
 #![warn(missing_docs)]
 
+use bdk_wallet::chain::spk_client::FullScanResult;
 use bdk_wallet::KeychainKind;
 use core::fmt;
 use core::mem;
+use kyoto::node::client::Receiver;
 pub use kyoto::node::messages::SyncUpdate;
 pub use kyoto::ScriptBuf;
 use std::collections::HashSet;
@@ -103,8 +105,24 @@ where
         }
     }
 
+    /// Build a light client from an `KeychainTxOutIndex` and checkpoint
+    pub fn from_index(
+        cp: CheckPoint,
+        index: &KeychainTxOutIndex<K>,
+        mut client: node::client::Client,
+    ) -> Self {
+        let (sender, receiver) = client.split();
+        Self {
+            sender,
+            receiver,
+            chain_changeset: BTreeMap::new(),
+            cp,
+            graph: IndexedTxGraph::new(index.clone()),
+        }
+    }
+
     /// Sync.
-    pub async fn update(&mut self) -> Option<Update<K>> {
+    pub async fn update(&mut self) -> Option<FullScanResult<K>> {
         while let Ok(message) = self.receiver.recv().await {
             match message {
                 NodeMessage::Block(IndexedBlock { height, block }) => {
@@ -154,9 +172,10 @@ where
 
         let cp = self.update_chain()?;
         let indexed_tx_graph = mem::take(&mut self.graph);
-        Some(Update {
-            cp,
-            indexed_tx_graph,
+        Some(FullScanResult {
+            graph_update: indexed_tx_graph.graph().clone(),
+            chain_update: cp,
+            last_active_indices: indexed_tx_graph.index.last_used_indices(),
         })
     }
 
@@ -200,7 +219,7 @@ where
     }
 
     /// Broadcast a [`Transaction`].
-    pub async fn broadcast(&mut self, tx: &Transaction) -> Result<(), Error> {
+    pub async fn broadcast(&self, tx: &Transaction) -> Result<(), Error> {
         use kyoto::TxBroadcastPolicy::*;
 
         self.sender
@@ -212,13 +231,8 @@ where
             .map_err(Error::Client)
     }
 
-    /// Get a struct to broadcast transactions
-    pub fn transaction_broadcaster(&self) -> TransactionBroadcaster {
-        TransactionBroadcaster::new(self.sender.clone())
-    }
-
     /// Add more scripts to the node. Could this just check a SPK index?
-    pub async fn add_scripts(&mut self, scripts: HashSet<ScriptBuf>) -> Result<(), Error> {
+    pub async fn add_scripts(&self, scripts: HashSet<ScriptBuf>) -> Result<(), Error> {
         self.sender
             .add_scripts(scripts)
             .await
@@ -226,18 +240,19 @@ where
     }
 
     /// Shutdown.
-    pub async fn shutdown(&mut self) -> Result<(), Error> {
+    pub async fn shutdown(&self) -> Result<(), Error> {
         self.sender.shutdown().await.map_err(Error::Client)
     }
-}
 
-/// Update.
-#[derive(Debug)]
-pub struct Update<K> {
-    /// `CheckPoint`
-    pub cp: CheckPoint,
-    /// `IndexedTxGraph`
-    pub indexed_tx_graph: IndexedTxGraph<ConfirmationTimeHeightAnchor, KeychainTxOutIndex<K>>,
+    /// Get a struct to broadcast transactions
+    pub fn transaction_broadcaster(&self) -> TransactionBroadcaster {
+        TransactionBroadcaster::new(self.sender.clone())
+    }
+
+    /// Get the underlying channel receiver
+    pub fn channel_receiver(&mut self) -> &mut Receiver<NodeMessage> {
+        &mut self.receiver
+    }
 }
 
 /// Broadcast transactions to the network.

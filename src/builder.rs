@@ -84,7 +84,11 @@ impl<'a> LightClientBuilder<'a> {
             }
         }
         let (node, kyoto_client) = node_builder.add_scripts(spks).build_node();
-        let request = Request::new(self.wallet.local_chain().tip(), self.wallet.spk_index());
-        (node, Client::from_request(request, kyoto_client))
+        let client = Client::from_index(
+            self.wallet.local_chain().tip(),
+            self.wallet.spk_index(),
+            kyoto_client,
+        );
+        (node, client)
     }
 }
