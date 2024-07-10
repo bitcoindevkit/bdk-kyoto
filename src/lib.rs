@@ -3,12 +3,11 @@
 #![warn(missing_docs)]
 
 use bdk_wallet::chain::spk_client::FullScanResult;
+use handler::NodeMessageHandler;
 use core::fmt;
 use core::mem;
 use kyoto::node::client::Receiver;
 use std::collections::HashSet;
-pub use tokio::sync::broadcast;
-
 use bdk_wallet::bitcoin::{BlockHash, Transaction};
 
 use bdk_wallet::chain::{
@@ -28,6 +27,7 @@ pub use kyoto::TxBroadcast;
 pub use kyoto::TxBroadcastPolicy;
 
 pub mod builder;
+pub mod handler;
 
 /// Block height
 type Height = u32;
@@ -38,13 +38,15 @@ pub struct Client<K> {
     // channel sender
     sender: node::client::ClientSender,
     // channel receiver
-    receiver: broadcast::Receiver<NodeMessage>,
+    receiver: kyoto::node::client::Receiver<NodeMessage>,
     // changes to local chain
     chain_changeset: local_chain::ChangeSet,
     // local cp
     cp: CheckPoint,
     // receive graph
     graph: IndexedTxGraph<ConfirmationTimeHeightAnchor, KeychainTxOutIndex<K>>,
+    // messages
+    message_handler: Option<Box<dyn NodeMessageHandler + Send + Sync + 'static>>
 }
 
 impl<K> Client<K>
@@ -64,24 +66,28 @@ where
             chain_changeset: BTreeMap::new(),
             cp,
             graph: IndexedTxGraph::new(index.clone()),
+            message_handler: None
         }
+    }
+
+    /// Add a logger to handle node messages
+    pub fn set_logger(&mut self, logger: Box<dyn NodeMessageHandler + Send + Sync + 'static>) {
+        self.message_handler = Some(logger)
     }
 
     /// Sync.
     pub async fn update(&mut self) -> Option<FullScanResult<K>> {
         while let Ok(message) = self.receiver.recv().await {
+            self.handle_log(&message);
             match message {
                 NodeMessage::Block(IndexedBlock { height, block }) => {
                     let hash = block.header.block_hash();
                     self.chain_changeset.insert(height, Some(hash));
-                    tracing::info!("Applying Block: {hash}");
                     let _ = self.graph.apply_block_relevant(&block, height);
                 }
-                NodeMessage::Transaction(_) => {}
                 NodeMessage::BlocksDisconnected(headers) => {
                     for header in headers {
                         let height = header.height;
-                        tracing::info!("Disconnecting block: {height}");
                         self.chain_changeset.insert(height, None);
                     }
                 }
@@ -94,25 +100,12 @@ where
                         && self.cp.hash() == tip.hash
                     {
                         // return early if we're already synced
-                        tracing::info!("No updates.");
                         return None;
                     }
                     self.chain_changeset.insert(tip.height, Some(tip.hash));
-
-                    tracing::info!("Synced to tip {} {}", tip.height, tip.hash);
                     break;
                 }
-                NodeMessage::StateChange(s) => {
-                    tracing::info!("The node changed state to: {s:?}");
-                }
-                NodeMessage::TxSent(_) => {}
-                NodeMessage::TxBroadcastFailure(_) => {}
-                NodeMessage::Dialog(s) => {
-                    tracing::info!("{s}")
-                }
-                NodeMessage::Warning(s) => {
-                    tracing::warn!("{s}")
-                }
+                _ => (),
             }
         }
 
@@ -162,6 +155,39 @@ where
             )
             .expect("blocks are well ordered"),
         )
+    }
+
+    fn handle_log(&self, message: &NodeMessage) {
+        if let Some(logger) = &self.message_handler {
+            match message {
+                NodeMessage::Dialog(d) => logger.handle_dialog(d.clone()),
+                NodeMessage::Warning(w) => logger.handle_warning(w.clone()),
+                NodeMessage::StateChange(s) => logger.handle_state_change(*s),
+                NodeMessage::Block(b) => {
+                    let hash = b.block.header.block_hash();
+                    logger.handle_dialog(format!("Applying Block: {hash}"));
+                },
+                NodeMessage::Synced(SyncUpdate {
+                    tip,
+                    recent_history: _,
+                }) => {
+                    logger.handle_dialog(format!("Synced to tip {} {}", tip.height, tip.hash));
+                },
+                NodeMessage::BlocksDisconnected(headers) => {
+                    for header in headers {
+                        let height = header.height;
+                        logger.handle_warning(format!("Disconnecting block: {height}"));
+                    }
+                },
+                NodeMessage::TxSent(t) => {
+                    logger.handle_dialog(format!("Transaction sent: {t}"));
+                },
+                NodeMessage::TxBroadcastFailure(r) => {
+                    logger.handle_warning(format!("Transaction rejected: {:?}", r.reason));
+                },
+                _ => (),
+            }
+        }
     }
 
     /// Broadcast a [`Transaction`].
