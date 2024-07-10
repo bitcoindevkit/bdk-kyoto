@@ -58,7 +58,6 @@ where
         cp: CheckPoint,
         index: &KeychainTxOutIndex<K>,
         client: node::client::Client,
-        message_handler: Option<Box<dyn NodeMessageHandler + Send + Sync + 'static>>,
     ) -> Self {
         let (sender, receiver) = client.split();
         Self {
@@ -67,8 +66,13 @@ where
             chain_changeset: BTreeMap::new(),
             cp,
             graph: IndexedTxGraph::new(index.clone()),
-            message_handler
+            message_handler: None
         }
+    }
+
+    /// Add a logger to handle node messages
+    pub fn set_logger(&mut self, logger: Box<dyn NodeMessageHandler + Send + Sync + 'static>) {
+        self.message_handler = Some(logger)
     }
 
     /// Sync.

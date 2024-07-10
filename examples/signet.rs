@@ -65,7 +65,8 @@ async fn main() -> anyhow::Result<()> {
         ))
         .num_required_peers(2)
         .build_node();
-    let mut client: Client<usize> = Client::from_index(chain.tip(), &graph.index, client, Some(Box::new(PrintLogger::new())));
+    let mut client: Client<usize> = Client::from_index(chain.tip(), &graph.index, client);
+    client.set_logger(Box::new(PrintLogger::new()));
 
     // Run the `Node`
     if !node.is_running() {

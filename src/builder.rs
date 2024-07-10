@@ -100,12 +100,14 @@ impl<'a> LightClientBuilder<'a> {
             }
         }
         let (node, kyoto_client) = node_builder.add_scripts(spks).build_node();
-        let client = Client::from_index(
+        let mut client = Client::from_index(
             self.wallet.local_chain().tip(),
             self.wallet.spk_index(),
             kyoto_client,
-            self.message_handler
         );
+        if let Some(logger) = self.message_handler {
+            client.set_logger(logger)
+        }
         (node, client)
     }
 }
