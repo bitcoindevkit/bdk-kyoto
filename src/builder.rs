@@ -69,8 +69,8 @@ impl<'a> LightClientBuilder<'a> {
         self
     }
 
-    /// Add a wallet "birthday", or block to start searching for transactions _strictly after_. 
-    /// Only useful for recovering wallets. If the wallet has a tip that is already higher than the 
+    /// Add a wallet "birthday", or block to start searching for transactions _strictly after_.
+    /// Only useful for recovering wallets. If the wallet has a tip that is already higher than the
     /// height provided, this height will be ignored.
     pub fn scan_after(mut self, height: u32) -> Self {
         self.birthday_height = Some(height);
@@ -108,11 +108,10 @@ impl<'a> LightClientBuilder<'a> {
             if height.ge(&checkpoint.height) {
                 cp = checkpoint;
             } else {
-                break
+                break;
             }
         }
         cp
-
     }
 
     /// Build a light client node and a client to interact with the node

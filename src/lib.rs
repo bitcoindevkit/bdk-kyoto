@@ -3,11 +3,12 @@
 #![warn(missing_docs)]
 
 use bdk_wallet::bitcoin::{BlockHash, Transaction};
+use bdk_wallet::chain::local_chain::LocalChain;
 use bdk_wallet::chain::spk_client::FullScanResult;
 use core::fmt;
 use core::mem;
-use logger::NodeMessageHandler;
 use kyoto::node::client::Receiver;
+use logger::NodeMessageHandler;
 use std::collections::HashSet;
 
 use bdk_wallet::chain::{
@@ -40,9 +41,7 @@ pub struct Client<K> {
     // channel receiver
     receiver: kyoto::node::client::Receiver<NodeMessage>,
     // changes to local chain
-    chain_changeset: local_chain::ChangeSet,
-    // local cp
-    cp: CheckPoint,
+    chain: local_chain::LocalChain,
     // receive graph
     graph: IndexedTxGraph<ConfirmationTimeHeightAnchor, KeychainTxOutIndex<K>>,
     // messages
@@ -63,8 +62,7 @@ where
         Self {
             sender,
             receiver,
-            chain_changeset: BTreeMap::new(),
-            cp,
+            chain: LocalChain::from_tip(cp).unwrap(),
             graph: IndexedTxGraph::new(index.clone()),
             message_handler: None,
         }
@@ -76,86 +74,47 @@ where
     }
 
     /// Return the most recent update from the node once it has synced to the network's tip.
-    /// This may take a significant portion of time during wallet recoveries or dormant wallets. 
+    /// This may take a significant portion of time during wallet recoveries or dormant wallets.
     pub async fn update(&mut self) -> Option<FullScanResult<K>> {
+        let mut chain_changeset = local_chain::ChangeSet::new();
         while let Ok(message) = self.receiver.recv().await {
             self.handle_log(&message);
             match message {
                 NodeMessage::Block(IndexedBlock { height, block }) => {
                     let hash = block.header.block_hash();
-                    self.chain_changeset.insert(height, Some(hash));
+                    chain_changeset.insert(height, Some(hash));
                     let _ = self.graph.apply_block_relevant(&block, height);
                 }
                 NodeMessage::BlocksDisconnected(headers) => {
                     for header in headers {
                         let height = header.height;
-                        self.chain_changeset.insert(height, None);
+                        chain_changeset.insert(height, None);
                     }
                 }
                 NodeMessage::Synced(SyncUpdate {
                     tip,
                     recent_history: _,
                 }) => {
-                    if self.chain_changeset.is_empty()
-                        && self.cp.height() == tip.height
-                        && self.cp.hash() == tip.hash
+                    if chain_changeset.is_empty()
+                        && self.chain.tip().height() == tip.height
+                        && self.chain.tip().hash() == tip.hash
                     {
                         // return early if we're already synced
                         return None;
                     }
-                    self.chain_changeset.insert(tip.height, Some(tip.hash));
+                    chain_changeset.insert(tip.height, Some(tip.hash));
                     break;
                 }
                 _ => (),
             }
         }
-
-        let cp = self.update_chain()?;
+        self.chain.apply_changeset(&chain_changeset).unwrap();
         let indexed_tx_graph = mem::take(&mut self.graph);
         Some(FullScanResult {
             graph_update: indexed_tx_graph.graph().clone(),
-            chain_update: cp,
+            chain_update: self.chain.tip(),
             last_active_indices: indexed_tx_graph.index.last_used_indices(),
         })
-    }
-
-    /// Update chain.
-    fn update_chain(&self) -> Option<CheckPoint> {
-        // Note: this is taken from `CheckPoint::apply_changeset`
-        // which is not currently a pub fn
-        let start_height = self.chain_changeset.keys().copied().next()?;
-        let mut blocks = BTreeMap::<Height, BlockHash>::new();
-
-        // find local block to base new blocks onto, keeping all
-        // original heights above `start_height`
-        let base: BlockId = {
-            let mut it = self.cp.iter();
-            let mut cp = it.next()?;
-            while cp.height() >= start_height {
-                blocks.insert(cp.height(), cp.hash());
-                cp = it.next().expect("fallback to genesis");
-            }
-            cp.block_id()
-        };
-
-        // apply the changes
-        for (&height, &hash) in self.chain_changeset.iter() {
-            match hash {
-                Some(hash) => {
-                    blocks.insert(height, hash);
-                }
-                None => {
-                    blocks.remove(&height);
-                }
-            };
-        }
-
-        Some(
-            CheckPoint::from_block_ids(
-                core::iter::once(base).chain(blocks.into_iter().map(BlockId::from)),
-            )
-            .expect("blocks are well ordered"),
-        )
     }
 
     // Send dialogs to an arbitrary logger
