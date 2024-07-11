@@ -1,13 +1,9 @@
-
 use std::net::{IpAddr, Ipv4Addr};
 
 use bdk_kyoto::builder::LightClientBuilder;
 use bdk_kyoto::logger::TraceLogger;
 use bdk_wallet::bitcoin::Network;
-use bdk_wallet::{
-    wallet::Wallet,
-    KeychainKind,
-};
+use bdk_wallet::{wallet::Wallet, KeychainKind};
 use kyoto::TrustedPeer;
 
 /// Peer address whitelist
@@ -63,6 +59,7 @@ async fn main() -> anyhow::Result<()> {
                 "Last revealed Internal: {}",
                 wallet.derivation_index(KeychainKind::Internal).unwrap()
             );
+            tracing::info!("Local chain tip: {}", wallet.local_chain().tip().height());
         }
     }
 }
