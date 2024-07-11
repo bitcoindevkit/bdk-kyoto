@@ -1,15 +1,20 @@
 //! [`bdk_kyoto::Client`] builder
 
-use std::collections::HashSet;
+use std::{collections::HashSet, path::PathBuf, str::FromStr};
 
 use bdk_wallet::{chain::local_chain::CheckPoint, KeychainKind, Wallet};
 use kyoto::{
-    chain::checkpoints::HeaderCheckpoint,
+    chain::checkpoints::{
+        HeaderCheckpoint, MAINNET_HEADER_CP, REGTEST_HEADER_CP, SIGNET_HEADER_CP,
+    },
     node::{builder::NodeBuilder, node::Node},
-    ScriptBuf, TrustedPeer,
+    BlockHash, Network, ScriptBuf, TrustedPeer,
 };
 
-use crate::{handler::{NodeMessageHandler, PrintLogger}, Client};
+use crate::{
+    logger::{NodeMessageHandler, PrintLogger},
+    Client,
+};
 
 const TARGET_INDEX: u32 = 20;
 const RECOMMENDED_PEERS: u8 = 2;
@@ -20,8 +25,9 @@ pub struct LightClientBuilder<'a> {
     wallet: &'a Wallet,
     peers: Option<Vec<TrustedPeer>>,
     connections: Option<u8>,
-    birthday: Option<CheckPoint>,
-    message_handler: Option<Box<dyn NodeMessageHandler + Send + Sync + 'static>>
+    birthday_height: Option<u32>,
+    data_dir: Option<PathBuf>,
+    message_handler: Option<Box<dyn NodeMessageHandler + Send + Sync + 'static>>,
 }
 
 impl<'a> LightClientBuilder<'a> {
@@ -31,19 +37,13 @@ impl<'a> LightClientBuilder<'a> {
             wallet,
             peers: None,
             connections: None,
-            birthday: None,
+            birthday_height: None,
+            data_dir: None,
             message_handler: None,
         }
     }
-
-    /// Add a wallet "birthday", or block to start searching for transactions _strictly after_.
-    pub fn add_birthday(mut self, birthday: CheckPoint) -> Self {
-        self.birthday = Some(birthday);
-        self
-    }
-
     /// Add peers to connect to over the P2P network.
-    pub fn add_peers(mut self, peers: Vec<TrustedPeer>) -> Self {
+    pub fn peers(mut self, peers: Vec<TrustedPeer>) -> Self {
         self.peers = Some(peers);
         self
     }
@@ -55,34 +55,90 @@ impl<'a> LightClientBuilder<'a> {
     }
 
     /// Handle messages from the node
-    pub fn logger(mut self, message_handler: impl NodeMessageHandler + Send + Sync + 'static) -> Self {
+    pub fn logger(
+        mut self,
+        message_handler: impl NodeMessageHandler + Send + Sync + 'static,
+    ) -> Self {
         self.message_handler = Some(Box::new(message_handler));
         self
     }
 
+    /// Add a directory to store node data
+    pub fn data_dir(mut self, dir: PathBuf) -> Self {
+        self.data_dir = Some(dir);
+        self
+    }
+
+    /// Add a wallet "birthday", or block to start searching for transactions _strictly after_. 
+    /// Only useful for recovering wallets. If the wallet has a tip that is already higher than the 
+    /// height provided, this height will be ignored.
+    pub fn scan_after(mut self, height: u32) -> Self {
+        self.birthday_height = Some(height);
+        self
+    }
+
+    fn get_checkpoint_for_height(height: u32, network: &Network) -> HeaderCheckpoint {
+        let checkpoints: Vec<HeaderCheckpoint> = match network {
+            Network::Bitcoin => MAINNET_HEADER_CP
+                .to_vec()
+                .into_iter()
+                .map(|(height, hash)| {
+                    HeaderCheckpoint::new(height, BlockHash::from_str(hash).unwrap())
+                })
+                .collect(),
+            Network::Testnet => panic!(),
+            Network::Signet => SIGNET_HEADER_CP
+                .to_vec()
+                .into_iter()
+                .map(|(height, hash)| {
+                    HeaderCheckpoint::new(height, BlockHash::from_str(hash).unwrap())
+                })
+                .collect(),
+            Network::Regtest => REGTEST_HEADER_CP
+                .to_vec()
+                .into_iter()
+                .map(|(height, hash)| {
+                    HeaderCheckpoint::new(height, BlockHash::from_str(hash).unwrap())
+                })
+                .collect(),
+            _ => unreachable!(),
+        };
+        let mut cp = *checkpoints.first().unwrap();
+        for checkpoint in checkpoints {
+            if height.ge(&checkpoint.height) {
+                cp = checkpoint;
+            } else {
+                break
+            }
+        }
+        cp
+
+    }
+
     /// Build a light client node and a client to interact with the node
     pub fn build(self) -> (Node, Client<KeychainKind>) {
-        let mut node_builder = NodeBuilder::new(self.wallet.network());
+        let network = self.wallet.network();
+        let mut node_builder = NodeBuilder::new(network);
         if let Some(whitelist) = self.peers {
             node_builder = node_builder.add_peers(whitelist);
         }
-        match self.birthday {
+        match self.birthday_height {
             Some(birthday) => {
-                if birthday.height() < self.wallet.local_chain().tip().height() {
+                if birthday < self.wallet.local_chain().tip().height() {
                     let block_id = self.wallet.local_chain().tip();
                     let header_cp = HeaderCheckpoint::new(block_id.height(), block_id.hash());
                     node_builder = node_builder.anchor_checkpoint(header_cp)
                 } else {
-                    node_builder = node_builder.anchor_checkpoint(HeaderCheckpoint::new(
-                        birthday.height(),
-                        birthday.hash(),
-                    ))
+                    let cp = Self::get_checkpoint_for_height(birthday, &network);
+                    node_builder = node_builder.anchor_checkpoint(cp)
                 }
             }
             None => {
                 let block_id = self.wallet.local_chain().tip();
-                let header_cp = HeaderCheckpoint::new(block_id.height(), block_id.hash());
-                node_builder = node_builder.anchor_checkpoint(header_cp)
+                if block_id.height() > 0 {
+                    let header_cp = HeaderCheckpoint::new(block_id.height(), block_id.hash());
+                    node_builder = node_builder.anchor_checkpoint(header_cp)
+                }
             }
         }
         node_builder =

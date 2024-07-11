@@ -1,21 +1,13 @@
-#![allow(unused)]
 
-use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr};
-use std::str::FromStr;
 
 use bdk_kyoto::builder::LightClientBuilder;
-use bdk_kyoto::handler::TraceLogger;
-use bdk_wallet::bitcoin::{BlockHash, Network, ScriptBuf};
-use bdk_wallet::chain::local_chain::CheckPoint;
-use bdk_wallet::chain::BlockId;
+use bdk_kyoto::logger::TraceLogger;
+use bdk_wallet::bitcoin::Network;
 use bdk_wallet::{
-    wallet::{self, Wallet},
+    wallet::Wallet,
     KeychainKind,
 };
-
-use kyoto::chain::checkpoints::{HeaderCheckpoint, SIGNET_HEADER_CP};
-use kyoto::node::builder::NodeBuilder;
 use kyoto::TrustedPeer;
 
 /// Peer address whitelist
@@ -34,12 +26,6 @@ async fn main() -> anyhow::Result<()> {
     let desc = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/0/*)";
     let change_desc = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/1/*)";
 
-    let (height, hash) = SIGNET_HEADER_CP.into_iter().rev().nth(3).unwrap();
-    let header_cp = CheckPoint::new(BlockId {
-        height: *height,
-        hash: BlockHash::from_str(hash).unwrap(),
-    });
-
     let peers = PEERS
         .into_iter()
         .map(|ip| TrustedPeer::from_ip(*ip))
@@ -49,8 +35,8 @@ async fn main() -> anyhow::Result<()> {
 
     // The light client builder handles the logic of inserting the SPKs
     let (mut node, mut client) = LightClientBuilder::new(&wallet)
-        .add_birthday(header_cp)
-        .add_peers(peers)
+        .scan_after(170_000)
+        .peers(peers)
         .logger(TraceLogger::new())
         .build();
 

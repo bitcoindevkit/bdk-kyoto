@@ -20,10 +20,9 @@ pub struct PrintLogger {}
 impl PrintLogger {
     /// Build a new print logger
     pub fn new() -> Self {
-        Self {  }
+        Self {}
     }
 }
-
 
 impl NodeMessageHandler for PrintLogger {
     fn handle_dialog(&self, dialog: String) {
@@ -47,7 +46,7 @@ pub struct TraceLogger {}
 impl TraceLogger {
     /// Build a new trace logger
     pub fn new() -> Self {
-        Self {  }
+        Self {}
     }
 }
 
@@ -66,7 +65,7 @@ impl NodeMessageHandler for TraceLogger {
     }
 }
 
-impl Debug for dyn NodeMessageHandler  + Send + Sync + 'static {
+impl Debug for dyn NodeMessageHandler + Send + Sync + 'static {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         Ok(write!(f, "Node message handler")?)
     }
