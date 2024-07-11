@@ -1,8 +1,5 @@
-#![allow(unused)]
-
-use bdk_kyoto::handler::PrintLogger;
+use bdk_kyoto::logger::PrintLogger;
 use bdk_kyoto::Client;
-use bdk_wallet::KeychainKind;
 use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
@@ -65,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
         ))
         .num_required_peers(2)
         .build_node();
-    let mut client: Client<usize> = Client::from_index(chain.tip(), &graph.index, client);
+    let mut client = Client::from_index(chain.tip(), &graph.index, client);
     client.set_logger(Box::new(PrintLogger::new()));
 
     // Run the `Node`
