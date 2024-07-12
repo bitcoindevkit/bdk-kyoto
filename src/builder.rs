@@ -140,6 +140,9 @@ impl<'a> LightClientBuilder<'a> {
                 }
             }
         }
+        if let Some(dir) = self.data_dir {
+            node_builder = node_builder.add_data_dir(dir);
+        }
         node_builder =
             node_builder.num_required_peers(self.connections.unwrap_or(RECOMMENDED_PEERS));
         let mut spks: HashSet<ScriptBuf> = HashSet::new();
