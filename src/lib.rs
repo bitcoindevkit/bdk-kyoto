@@ -95,14 +95,10 @@ where
                     tip,
                     recent_history: _,
                 }) => {
-                    if chain_changeset.is_empty()
-                        && self.chain.tip().height() == tip.height
-                        && self.chain.tip().hash() == tip.hash
-                    {
+                    if chain_changeset.is_empty() {
                         // return early if we're already synced
                         return None;
                     }
-                    chain_changeset.insert(tip.height, Some(tip.hash));
                     break;
                 }
                 _ => (),
