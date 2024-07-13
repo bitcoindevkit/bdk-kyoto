@@ -1,5 +1,4 @@
 //! bdk_kyoto
-#![allow(unused)]
 #![warn(missing_docs)]
 
 use core::fmt;

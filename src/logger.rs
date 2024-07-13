@@ -15,6 +15,7 @@ pub trait NodeMessageHandler {
 }
 
 /// Print messages from the node to the console
+#[derive(Default)]
 pub struct PrintLogger {}
 
 impl PrintLogger {
@@ -40,6 +41,7 @@ impl NodeMessageHandler for PrintLogger {
 
 /// Print messages from the node to the console
 #[cfg(feature = "trace")]
+#[derive(Default)]
 pub struct TraceLogger {}
 
 #[cfg(feature = "trace")]
