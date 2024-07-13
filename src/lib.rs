@@ -11,19 +11,21 @@ use bdk_wallet::chain::{
     spk_client::FullScanResult,
     ConfirmationTimeHeightAnchor, IndexedTxGraph,
 };
-pub use kyoto::node::{
-    self,
-    client::{self, Receiver},
-    messages::{NodeMessage, SyncUpdate},
-    node::Node,
-};
 
 use crate::logger::NodeMessageHandler;
 
 pub mod builder;
 pub mod logger;
 
-pub use kyoto::{IndexedBlock, TrustedPeer, TxBroadcast, TxBroadcastPolicy};
+pub use kyoto::{
+    node::{
+        self,
+        client::{self, Receiver},
+        messages::{NodeMessage, SyncUpdate},
+        node::Node,
+    },
+    IndexedBlock, TrustedPeer, TxBroadcast, TxBroadcastPolicy,
+};
 
 /// Client.
 #[derive(Debug)]
