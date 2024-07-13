@@ -2,42 +2,36 @@
 #![allow(unused)]
 #![warn(missing_docs)]
 
-use bdk_wallet::bitcoin::{BlockHash, Transaction};
-use bdk_wallet::chain::local_chain::LocalChain;
-use bdk_wallet::chain::spk_client::FullScanResult;
 use core::fmt;
 use core::mem;
-use kyoto::node::client::Receiver;
-use logger::NodeMessageHandler;
 use std::collections::HashSet;
 
+use bdk_wallet::bitcoin::{ScriptBuf, Transaction};
 use bdk_wallet::chain::{
-    collections::BTreeMap,
     keychain::KeychainTxOutIndex,
-    local_chain::{self, CheckPoint},
-    BlockId, ConfirmationTimeHeightAnchor, IndexedTxGraph,
+    local_chain::{self, CheckPoint, LocalChain},
+    spk_client::FullScanResult,
+    ConfirmationTimeHeightAnchor, IndexedTxGraph,
+};
+pub use kyoto::node::{
+    self,
+    client::{self, Receiver},
+    messages::{NodeMessage, SyncUpdate},
+    node::Node,
 };
 
-pub use kyoto::node::messages::SyncUpdate;
-pub use kyoto::node::node::Node;
-pub use kyoto::node::{self, messages::NodeMessage};
-pub use kyoto::IndexedBlock;
-pub use kyoto::ScriptBuf;
-pub use kyoto::TrustedPeer;
-pub use kyoto::TxBroadcast;
-pub use kyoto::TxBroadcastPolicy;
+use crate::logger::NodeMessageHandler;
 
 pub mod builder;
 pub mod logger;
 
-/// Block height
-type Height = u32;
+pub use kyoto::{IndexedBlock, TrustedPeer, TxBroadcast, TxBroadcastPolicy};
 
 /// Client.
 #[derive(Debug)]
 pub struct Client<K> {
     // channel sender
-    sender: node::client::ClientSender,
+    sender: client::ClientSender,
     // channel receiver
     receiver: kyoto::node::client::Receiver<NodeMessage>,
     // changes to local chain
@@ -56,7 +50,7 @@ where
     pub fn from_index(
         cp: CheckPoint,
         index: &KeychainTxOutIndex<K>,
-        client: node::client::Client,
+        client: client::Client,
     ) -> Self {
         let (sender, receiver) = client.split();
         Self {
@@ -193,11 +187,11 @@ where
 /// Broadcast transactions to the network.
 #[derive(Debug)]
 pub struct TransactionBroadcaster {
-    sender: node::client::ClientSender,
+    sender: client::ClientSender,
 }
 
 impl TransactionBroadcaster {
-    fn new(sender: node::client::ClientSender) -> Self {
+    fn new(sender: client::ClientSender) -> Self {
         Self { sender }
     }
 
