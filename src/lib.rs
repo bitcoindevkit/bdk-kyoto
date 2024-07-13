@@ -46,7 +46,7 @@ impl<K> Client<K>
 where
     K: fmt::Debug + Clone + Ord,
 {
-    /// Build a light client from an `KeychainTxOutIndex` and checkpoint
+    /// Build a light client from a [`KeychainTxOutIndex`] and checkpoint
     pub fn from_index(
         cp: CheckPoint,
         index: &KeychainTxOutIndex<K>,
@@ -151,13 +151,7 @@ where
         tx: &Transaction,
         policy: TxBroadcastPolicy,
     ) -> Result<(), Error> {
-        self.sender
-            .broadcast_tx(TxBroadcast {
-                tx: tx.clone(),
-                broadcast_policy: policy,
-            })
-            .await
-            .map_err(Error::Sender)
+        self.transaction_broadcaster().broadcast(tx, policy).await
     }
 
     /// Add more scripts to the node. Could this just check a SPK index?
@@ -184,19 +178,20 @@ where
     }
 }
 
-/// Broadcast transactions to the network.
+/// Type that broadcasts transactions to the network.
 #[derive(Debug)]
 pub struct TransactionBroadcaster {
     sender: client::ClientSender,
 }
 
 impl TransactionBroadcaster {
-    fn new(sender: client::ClientSender) -> Self {
+    /// Create a new transaction broadcaster with the given client `sender`.
+    pub fn new(sender: client::ClientSender) -> Self {
         Self { sender }
     }
 
     /// Broadcast a [`Transaction`] with a [`TxBroadcastPolicy`] strategy.
-    async fn broadcast(
+    pub async fn broadcast(
         &mut self,
         tx: &Transaction,
         policy: TxBroadcastPolicy,
