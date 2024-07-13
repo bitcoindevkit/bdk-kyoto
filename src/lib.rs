@@ -2,7 +2,6 @@
 #![warn(missing_docs)]
 
 use core::fmt;
-use core::mem;
 use std::collections::HashSet;
 
 use bdk_wallet::bitcoin::{ScriptBuf, Transaction};
@@ -102,11 +101,10 @@ where
             }
         }
         self.chain.apply_changeset(&chain_changeset).unwrap();
-        let indexed_tx_graph = mem::take(&mut self.graph);
         Some(FullScanResult {
-            graph_update: indexed_tx_graph.graph().clone(),
+            graph_update: self.graph.graph().clone(),
             chain_update: self.chain.tip(),
-            last_active_indices: indexed_tx_graph.index.last_used_indices(),
+            last_active_indices: self.graph.index.last_used_indices(),
         })
     }
 
