@@ -1,20 +1,21 @@
-use bdk_kyoto::logger::PrintLogger;
-use bdk_kyoto::Client;
 use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 use tokio::task;
 
+use bdk_kyoto::logger::PrintLogger;
+use bdk_kyoto::Client;
 use bdk_wallet::bitcoin::{
     constants::genesis_block, secp256k1::Secp256k1, Address, BlockHash, Network, ScriptBuf,
 };
 use bdk_wallet::chain::{
-    keychain::KeychainTxOutIndex, local_chain::LocalChain, miniscript::Descriptor, FullTxOut,
-    IndexedTxGraph,
+    keychain::KeychainTxOutIndex, local_chain::LocalChain, miniscript::Descriptor,
+    spk_client::FullScanResult, Append, FullTxOut, IndexedTxGraph, SpkIterator,
 };
-
 use kyoto::chain::checkpoints::HeaderCheckpoint;
 use kyoto::node::builder::NodeBuilder;
+
+const TARGET_INDEX: u32 = 20;
 
 /* Sync bdk chain and txgraph structures */
 
@@ -38,10 +39,10 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let mut spks_to_watch: HashSet<ScriptBuf> = HashSet::new();
-    for keychain in 0usize..=1 {
-        let (indexed_spks, _changeset) = graph.index.reveal_to_target(&keychain, 19).unwrap();
-        let mut spks = indexed_spks.into_iter().map(|(_i, spk)| spk);
-        spks_to_watch.extend(&mut spks);
+    for (_k, desc) in graph.index.keychains() {
+        for (_i, spk) in SpkIterator::new_with_range(desc, 0..TARGET_INDEX) {
+            spks_to_watch.insert(spk);
+        }
     }
 
     let peers = vec![
@@ -65,15 +66,25 @@ async fn main() -> anyhow::Result<()> {
     let mut client = Client::from_index(chain.tip(), &graph.index, client);
     client.set_logger(Box::new(PrintLogger::new()));
 
-    // Run the `Node`
+    // Run the node
     if !node.is_running() {
         task::spawn(async move { node.run().await });
     }
 
     // Sync and apply updates
     if let Some(update) = client.update().await {
-        let _ = chain.apply_update(update.chain_update)?;
-        let _ = graph.apply_changeset(update.graph_update.initial_changeset().into());
+        let FullScanResult {
+            graph_update,
+            chain_update,
+            last_active_indices,
+        } = update;
+
+        let _ = chain.apply_update(chain_update)?;
+
+        let mut indexed_tx_graph_changeset = graph.apply_update(graph_update);
+        let index_changeset = graph.index.reveal_to_target_multi(&last_active_indices);
+        indexed_tx_graph_changeset.append(index_changeset.into());
+        let _ = graph.apply_changeset(indexed_tx_graph_changeset);
     }
 
     // Shutdown
