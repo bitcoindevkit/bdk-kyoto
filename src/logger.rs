@@ -67,6 +67,12 @@ impl NodeMessageHandler for TraceLogger {
     }
 }
 
+impl NodeMessageHandler for () {
+    fn handle_dialog(&self, _dialog: String) {}
+    fn handle_warning(&self, _warning: String) {}
+    fn handle_state_change(&self, _state: NodeState) {}
+}
+
 impl Debug for dyn NodeMessageHandler + Send + Sync + 'static {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         Ok(write!(f, "Node message handler")?)
