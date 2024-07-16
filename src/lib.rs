@@ -39,7 +39,7 @@ pub struct Client<K> {
     // receive graph
     graph: IndexedTxGraph<ConfirmationTimeHeightAnchor, KeychainTxOutIndex<K>>,
     // messages
-    message_handler: Option<Box<dyn NodeMessageHandler + Send + Sync + 'static>>,
+    message_handler: Box<dyn NodeMessageHandler + Send + Sync + 'static>,
 }
 
 impl<K> Client<K>
@@ -58,13 +58,13 @@ where
             receiver,
             chain: LocalChain::from_tip(cp).unwrap(),
             graph: IndexedTxGraph::new(index.clone()),
-            message_handler: None,
+            message_handler: Box::new(()),
         }
     }
 
     /// Add a logger to handle node messages
     pub fn set_logger(&mut self, logger: Box<dyn NodeMessageHandler + Send + Sync + 'static>) {
-        self.message_handler = Some(logger)
+        self.message_handler = logger;
     }
 
     /// Return the most recent update from the node once it has synced to the network's tip.
@@ -112,35 +112,34 @@ where
 
     // Send dialogs to an arbitrary logger
     fn handle_log(&self, message: &NodeMessage) {
-        if let Some(logger) = &self.message_handler {
-            match message {
-                NodeMessage::Dialog(d) => logger.handle_dialog(d.clone()),
-                NodeMessage::Warning(w) => logger.handle_warning(w.clone()),
-                NodeMessage::StateChange(s) => logger.handle_state_change(*s),
-                NodeMessage::Block(b) => {
-                    let hash = b.block.header.block_hash();
-                    logger.handle_dialog(format!("Applying Block: {hash}"));
-                }
-                NodeMessage::Synced(SyncUpdate {
-                    tip,
-                    recent_history: _,
-                }) => {
-                    logger.handle_dialog(format!("Synced to tip {} {}", tip.height, tip.hash));
-                }
-                NodeMessage::BlocksDisconnected(headers) => {
-                    for header in headers {
-                        let height = header.height;
-                        logger.handle_warning(format!("Disconnecting block: {height}"));
-                    }
-                }
-                NodeMessage::TxSent(t) => {
-                    logger.handle_dialog(format!("Transaction sent: {t}"));
-                }
-                NodeMessage::TxBroadcastFailure(r) => {
-                    logger.handle_warning(format!("Transaction rejected: {:?}", r.reason));
-                }
-                _ => (),
+        let logger = &self.message_handler;
+        match message {
+            NodeMessage::Dialog(d) => logger.handle_dialog(d.clone()),
+            NodeMessage::Warning(w) => logger.handle_warning(w.clone()),
+            NodeMessage::StateChange(s) => logger.handle_state_change(*s),
+            NodeMessage::Block(b) => {
+                let hash = b.block.header.block_hash();
+                logger.handle_dialog(format!("Applying Block: {hash}"));
             }
+            NodeMessage::Synced(SyncUpdate {
+                tip,
+                recent_history: _,
+            }) => {
+                logger.handle_dialog(format!("Synced to tip {} {}", tip.height, tip.hash));
+            }
+            NodeMessage::BlocksDisconnected(headers) => {
+                for header in headers {
+                    let height = header.height;
+                    logger.handle_warning(format!("Disconnecting block: {height}"));
+                }
+            }
+            NodeMessage::TxSent(t) => {
+                logger.handle_dialog(format!("Transaction sent: {t}"));
+            }
+            NodeMessage::TxBroadcastFailure(r) => {
+                logger.handle_warning(format!("Transaction rejected: {:?}", r.reason));
+            }
+            _ => (),
         }
     }
 
