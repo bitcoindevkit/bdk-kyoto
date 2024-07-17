@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
+use std::sync::Arc;
 use tokio::task;
 
 use bdk_kyoto::logger::PrintLogger;
@@ -64,7 +65,7 @@ async fn main() -> anyhow::Result<()> {
         .num_required_peers(2)
         .build_node();
     let mut client = Client::from_index(chain.tip(), &graph.index, client);
-    client.set_logger(Box::new(PrintLogger::new()));
+    client.set_logger(Arc::new(PrintLogger::new()));
 
     // Run the node
     if !node.is_running() {

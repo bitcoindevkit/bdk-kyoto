@@ -1,4 +1,5 @@
 use std::net::{IpAddr, Ipv4Addr};
+use std::sync::Arc;
 
 use bdk_kyoto::builder::LightClientBuilder;
 use bdk_kyoto::logger::TraceLogger;
@@ -33,7 +34,7 @@ async fn main() -> anyhow::Result<()> {
     let (mut node, mut client) = LightClientBuilder::new(&wallet)
         .scan_after(170_000)
         .peers(peers)
-        .logger(TraceLogger::new())
+        .logger(Arc::new(TraceLogger::new()))
         .build();
 
     tokio::task::spawn(async move { node.run().await });

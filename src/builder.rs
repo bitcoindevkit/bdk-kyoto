@@ -1,6 +1,6 @@
 //! [`bdk_kyoto::Client`] builder
 
-use std::{collections::HashSet, path::PathBuf, str::FromStr};
+use std::{collections::HashSet, path::PathBuf, str::FromStr, sync::Arc};
 
 use bdk_wallet::{KeychainKind, Wallet};
 use kyoto::{
@@ -24,7 +24,7 @@ pub struct LightClientBuilder<'a> {
     connections: Option<u8>,
     birthday_height: Option<u32>,
     data_dir: Option<PathBuf>,
-    message_handler: Option<Box<dyn NodeMessageHandler + Send + Sync + 'static>>,
+    message_handler: Option<Arc<dyn NodeMessageHandler>>,
 }
 
 impl<'a> LightClientBuilder<'a> {
@@ -54,9 +54,9 @@ impl<'a> LightClientBuilder<'a> {
     /// Handle messages from the node
     pub fn logger(
         mut self,
-        message_handler: impl NodeMessageHandler + Send + Sync + 'static,
+        message_handler: Arc<dyn NodeMessageHandler>,
     ) -> Self {
-        self.message_handler = Some(Box::new(message_handler));
+        self.message_handler = Some(message_handler);
         self
     }
 

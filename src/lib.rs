@@ -3,6 +3,7 @@
 
 use core::fmt;
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use bdk_wallet::bitcoin::{ScriptBuf, Transaction};
 use bdk_wallet::chain::{
@@ -39,7 +40,7 @@ pub struct Client<K> {
     // receive graph
     graph: IndexedTxGraph<ConfirmationTimeHeightAnchor, KeychainTxOutIndex<K>>,
     // messages
-    message_handler: Box<dyn NodeMessageHandler + Send + Sync + 'static>,
+    message_handler: Arc<dyn NodeMessageHandler>,
 }
 
 impl<K> Client<K>
@@ -58,12 +59,12 @@ where
             receiver,
             chain: LocalChain::from_tip(cp).unwrap(),
             graph: IndexedTxGraph::new(index.clone()),
-            message_handler: Box::new(()),
+            message_handler: Arc::new(()),
         }
     }
 
     /// Add a logger to handle node messages
-    pub fn set_logger(&mut self, logger: Box<dyn NodeMessageHandler + Send + Sync + 'static>) {
+    pub fn set_logger(&mut self, logger: Arc<dyn NodeMessageHandler>) {
         self.message_handler = logger;
     }
 
