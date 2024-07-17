@@ -5,7 +5,7 @@ use std::fmt::Debug;
 pub use kyoto::node::node::NodeState;
 
 /// Handle dialog and state changes from a node with some arbitrary behavior
-pub trait NodeMessageHandler {
+pub trait NodeMessageHandler: Send + Sync + Debug {
     /// Make use of some message the node has sent.
     fn handle_dialog(&self, dialog: String);
     /// Make use of some warning the ndoe has sent.
@@ -15,7 +15,7 @@ pub trait NodeMessageHandler {
 }
 
 /// Print messages from the node to the console
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct PrintLogger {}
 
 impl PrintLogger {
@@ -41,7 +41,7 @@ impl NodeMessageHandler for PrintLogger {
 
 /// Print messages from the node to the console
 #[cfg(feature = "trace")]
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct TraceLogger {}
 
 #[cfg(feature = "trace")]
@@ -73,8 +73,3 @@ impl NodeMessageHandler for () {
     fn handle_state_change(&self, _state: NodeState) {}
 }
 
-impl Debug for dyn NodeMessageHandler + Send + Sync + 'static {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Ok(write!(f, "Node message handler")?)
-    }
-}
