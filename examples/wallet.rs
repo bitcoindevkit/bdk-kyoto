@@ -9,7 +9,6 @@ use kyoto::TrustedPeer;
 
 /// Peer address whitelist
 const PEERS: &[IpAddr] = &[
-    IpAddr::V4(Ipv4Addr::new(170, 75, 163, 219)),
     IpAddr::V4(Ipv4Addr::new(23, 137, 57, 100)),
 ];
 
