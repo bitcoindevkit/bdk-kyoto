@@ -126,13 +126,16 @@ where
                 tip,
                 recent_history: _,
             }) => {
-                logger.handle_dialog(format!("Synced to tip {} {}", tip.height, tip.hash));
+                logger.handle_sync(tip.height);
             }
-            NodeMessage::BlocksDisconnected(_headers) => {}
+            NodeMessage::BlocksDisconnected(headers) => {
+                logger
+                    .handle_blocks_disconnected(headers.into_iter().map(|dc| dc.height).collect());
+            }
             NodeMessage::TxSent(t) => {
-                logger.handle_dialog(format!("Transaction sent: {t}"));
+                logger.handle_tx_sent(t.clone());
             }
-            NodeMessage::TxBroadcastFailure(_r) => {},
+            NodeMessage::TxBroadcastFailure(_r) => {}
             _ => (),
         }
     }

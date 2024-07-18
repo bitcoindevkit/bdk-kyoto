@@ -8,9 +8,7 @@ use bdk_wallet::{wallet::Wallet, KeychainKind};
 use kyoto::TrustedPeer;
 
 /// Peer address whitelist
-const PEERS: &[IpAddr] = &[
-    IpAddr::V4(Ipv4Addr::new(23, 137, 57, 100)),
-];
+const PEERS: &[IpAddr] = &[IpAddr::V4(Ipv4Addr::new(23, 137, 57, 100))];
 
 /* Sync a bdk wallet */
 
