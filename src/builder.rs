@@ -52,10 +52,7 @@ impl<'a> LightClientBuilder<'a> {
     }
 
     /// Handle messages from the node
-    pub fn logger(
-        mut self,
-        message_handler: Arc<dyn NodeMessageHandler>,
-    ) -> Self {
+    pub fn logger(mut self, message_handler: Arc<dyn NodeMessageHandler>) -> Self {
         self.message_handler = Some(message_handler);
         self
     }
