@@ -128,18 +128,11 @@ where
             }) => {
                 logger.handle_dialog(format!("Synced to tip {} {}", tip.height, tip.hash));
             }
-            NodeMessage::BlocksDisconnected(headers) => {
-                for header in headers {
-                    let height = header.height;
-                    logger.handle_warning(format!("Disconnecting block: {height}"));
-                }
-            }
+            NodeMessage::BlocksDisconnected(_headers) => {}
             NodeMessage::TxSent(t) => {
                 logger.handle_dialog(format!("Transaction sent: {t}"));
             }
-            NodeMessage::TxBroadcastFailure(r) => {
-                logger.handle_warning(format!("Transaction rejected: {:?}", r.reason));
-            }
+            NodeMessage::TxBroadcastFailure(_r) => {},
             _ => (),
         }
     }
