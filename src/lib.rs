@@ -117,7 +117,7 @@ where
         match message {
             NodeMessage::Dialog(d) => logger.handle_dialog(d.clone()),
             NodeMessage::Warning(w) => logger.handle_warning(w.clone()),
-            NodeMessage::StateChange(s) => logger.handle_state_change(*s),
+            NodeMessage::StateChange(s) => logger.handle_state_changed(*s),
             NodeMessage::Block(b) => {
                 let hash = b.block.header.block_hash();
                 logger.handle_dialog(format!("Applying Block: {hash}"));
@@ -126,14 +126,15 @@ where
                 tip,
                 recent_history: _,
             }) => {
-                logger.handle_sync(tip.height);
+                logger.handle_synced(tip.height);
             }
             NodeMessage::BlocksDisconnected(headers) => {
                 logger
                     .handle_blocks_disconnected(headers.into_iter().map(|dc| dc.height).collect());
             }
-            NodeMessage::TxSent(t) => {
-                logger.handle_tx_sent(t.clone());
+            NodeMessage::TxSent(_t) => {
+                // If this becomes a type in UniFFI then we can pass it to handle_tx_sent
+                logger.handle_tx_sent();
             }
             NodeMessage::TxBroadcastFailure(_r) => {}
             _ => (),
@@ -146,7 +147,13 @@ where
         tx: &Transaction,
         policy: TxBroadcastPolicy,
     ) -> Result<(), Error> {
-        self.transaction_broadcaster().broadcast(tx, policy).await
+        self.sender
+            .broadcast_tx(TxBroadcast {
+                tx: tx.clone(),
+                broadcast_policy: policy,
+            })
+            .await
+            .map_err(Error::Sender)
     }
 
     /// Add more scripts to the node. Could this just check a SPK index?
@@ -181,7 +188,7 @@ pub struct TransactionBroadcaster {
 
 impl TransactionBroadcaster {
     /// Create a new transaction broadcaster with the given client `sender`.
-    pub fn new(sender: client::ClientSender) -> Self {
+    fn new(sender: client::ClientSender) -> Self {
         Self { sender }
     }
 
