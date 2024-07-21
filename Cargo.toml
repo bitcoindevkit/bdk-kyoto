@@ -7,16 +7,16 @@ edition = "2021"
 tracing = { version = "0.1", optional = true }
 tracing-subscriber = { version = "0.3", optional = true }
 
-[features]
-default = ["trace"]
-trace = ["tracing", "tracing-subscriber"]
-
 [dependencies.kyoto]
 git = "https://github.com/rustaceanrob/kyoto"
-rev = "0e8d3efaff4ba2d67a3db9a6dae982fb615e578a"
+rev = "03a3fad658987b74359a523a14015d883d130337"
 
 [dependencies.bdk_wallet]
 version = "1.0.0-alpha.13"
+
+[features]
+default = ["trace"]
+trace = ["tracing", "tracing-subscriber"]
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"], default-features = false }

@@ -17,13 +17,13 @@ pub trait NodeMessageHandler: Send + Sync + Debug + 'static {
     /// Make use of some warning the ndoe has sent.
     fn handle_warning(&self, warning: Warning);
     /// Handle a change in the node's state.
-    fn handle_state_change(&self, state: NodeState);
+    fn handle_state_changed(&self, state: NodeState);
     /// A transaction was broadcast to at least one peer.
-    fn handle_tx_sent(&self, txid: Txid);
+    fn handle_tx_sent(&self);
     /// A list of block heights were reorganized
     fn handle_blocks_disconnected(&self, blocks: Vec<u32>);
     /// The node has synced to the height of the connected peers.
-    fn handle_sync(&self, tip: u32);
+    fn handle_synced(&self, tip: u32);
 }
 
 /// Print messages from the node to the console
@@ -46,12 +46,12 @@ impl NodeMessageHandler for PrintLogger {
         println!("{warning}")
     }
 
-    fn handle_state_change(&self, state: NodeState) {
+    fn handle_state_changed(&self, state: NodeState) {
         println!("State change: {state:?}")
     }
 
-    fn handle_tx_sent(&self, txid: Txid) {
-        println!("Transaction sent {txid}")
+    fn handle_tx_sent(&self) {
+        println!("Transaction sent")
     }
 
     fn handle_blocks_disconnected(&self, blocks: Vec<u32>) {
@@ -60,7 +60,7 @@ impl NodeMessageHandler for PrintLogger {
         }
     }
 
-    fn handle_sync(&self, tip: u32) {
+    fn handle_synced(&self, tip: u32) {
         println!("Synced to tip {tip}")
     }
 }
@@ -88,12 +88,12 @@ impl NodeMessageHandler for TraceLogger {
         tracing::warn!("{warning}")
     }
 
-    fn handle_state_change(&self, state: NodeState) {
+    fn handle_state_changed(&self, state: NodeState) {
         tracing::info!("State change: {state:?}")
     }
 
-    fn handle_tx_sent(&self, txid: Txid) {
-        tracing::info!("Transaction sent: {txid}")
+    fn handle_tx_sent(&self) {
+        tracing::info!("Transaction sent")
     }
 
     fn handle_blocks_disconnected(&self, blocks: Vec<u32>) {
@@ -102,7 +102,7 @@ impl NodeMessageHandler for TraceLogger {
         }
     }
 
-    fn handle_sync(&self, tip: u32) {
+    fn handle_synced(&self, tip: u32) {
         tracing::info!("Synced to height: {tip}")
     }
 }
@@ -110,8 +110,8 @@ impl NodeMessageHandler for TraceLogger {
 impl NodeMessageHandler for () {
     fn handle_dialog(&self, _dialog: String) {}
     fn handle_warning(&self, _warning: Warning) {}
-    fn handle_state_change(&self, _state: NodeState) {}
-    fn handle_tx_sent(&self, _txid: Txid) {}
+    fn handle_state_changed(&self, _state: NodeState) {}
+    fn handle_tx_sent(&self) {}
     fn handle_blocks_disconnected(&self, _blocks: Vec<u32>) {}
-    fn handle_sync(&self, _tip: u32) {}
+    fn handle_synced(&self, _tip: u32) {}
 }
