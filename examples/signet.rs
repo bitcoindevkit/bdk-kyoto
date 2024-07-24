@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 use std::sync::Arc;
+use bdk_wallet::chain::Merge;
 use tokio::task;
 
 use bdk_kyoto::logger::PrintLogger;
@@ -10,8 +11,8 @@ use bdk_wallet::bitcoin::{
     constants::genesis_block, secp256k1::Secp256k1, Address, BlockHash, Network, ScriptBuf,
 };
 use bdk_wallet::chain::{
-    keychain::KeychainTxOutIndex, local_chain::LocalChain, miniscript::Descriptor,
-    spk_client::FullScanResult, Append, FullTxOut, IndexedTxGraph, SpkIterator,
+    keychain_txout::KeychainTxOutIndex, local_chain::LocalChain, miniscript::Descriptor,
+    spk_client::FullScanResult, FullTxOut, IndexedTxGraph, SpkIterator,
 };
 use kyoto::chain::checkpoints::HeaderCheckpoint;
 use kyoto::node::builder::NodeBuilder;
@@ -84,7 +85,7 @@ async fn main() -> anyhow::Result<()> {
 
         let mut indexed_tx_graph_changeset = graph.apply_update(graph_update);
         let index_changeset = graph.index.reveal_to_target_multi(&last_active_indices);
-        indexed_tx_graph_changeset.append(index_changeset.into());
+        indexed_tx_graph_changeset.merge(index_changeset.into());
         let _ = graph.apply_changeset(indexed_tx_graph_changeset);
     }
 

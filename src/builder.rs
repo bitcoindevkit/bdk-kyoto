@@ -144,7 +144,7 @@ impl<'a> LightClientBuilder<'a> {
             for index in 0..=self
                 .wallet
                 .spk_index()
-                .last_revealed_index(&keychain)
+                .last_revealed_index(keychain)
                 .unwrap_or(0)
                 + TARGET_INDEX
             {
