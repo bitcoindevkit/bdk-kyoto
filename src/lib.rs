@@ -2,15 +2,16 @@
 #![warn(missing_docs)]
 
 use core::fmt;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
 use bdk_wallet::bitcoin::{ScriptBuf, Transaction};
+use bdk_wallet::chain::ConfirmationBlockTime;
 use bdk_wallet::chain::{
-    keychain::KeychainTxOutIndex,
+    keychain_txout::KeychainTxOutIndex,
     local_chain::{self, CheckPoint, LocalChain},
     spk_client::FullScanResult,
-    ConfirmationTimeHeightAnchor, IndexedTxGraph,
+    IndexedTxGraph,
 };
 
 use crate::logger::NodeMessageHandler;
@@ -38,7 +39,7 @@ pub struct Client<K> {
     // changes to local chain
     chain: local_chain::LocalChain,
     // receive graph
-    graph: IndexedTxGraph<ConfirmationTimeHeightAnchor, KeychainTxOutIndex<K>>,
+    graph: IndexedTxGraph<ConfirmationBlockTime, KeychainTxOutIndex<K>>,
     // messages
     message_handler: Arc<dyn NodeMessageHandler>,
 }
@@ -71,7 +72,7 @@ where
     /// Return the most recent update from the node once it has synced to the network's tip.
     /// This may take a significant portion of time during wallet recoveries or dormant wallets.
     pub async fn update(&mut self) -> Option<FullScanResult<K>> {
-        let mut chain_changeset = local_chain::ChangeSet::new();
+        let mut chain_changeset = BTreeMap::new();
         while let Ok(message) = self.receiver.recv().await {
             self.handle_log(&message);
             match message {
@@ -103,7 +104,9 @@ where
                 _ => (),
             }
         }
-        self.chain.apply_changeset(&chain_changeset).unwrap();
+        self.chain
+            .apply_changeset(&local_chain::ChangeSet::from(chain_changeset))
+            .unwrap();
         Some(FullScanResult {
             graph_update: self.graph.graph().clone(),
             chain_update: self.chain.tip(),

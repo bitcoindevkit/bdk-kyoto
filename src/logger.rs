@@ -47,7 +47,7 @@ impl NodeMessageHandler for PrintLogger {
     }
 
     fn handle_state_changed(&self, state: NodeState) {
-        println!("State change: {state:?}")
+        println!("State change: {state}")
     }
 
     fn handle_tx_sent(&self) {
@@ -89,7 +89,7 @@ impl NodeMessageHandler for TraceLogger {
     }
 
     fn handle_state_changed(&self, state: NodeState) {
-        tracing::info!("State change: {state:?}")
+        tracing::info!("State change: {state}")
     }
 
     fn handle_tx_sent(&self) {
