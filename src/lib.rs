@@ -13,6 +13,7 @@ use bdk_wallet::chain::{
     spk_client::FullScanResult,
     IndexedTxGraph,
 };
+use kyoto::impl_sourceless_error;
 
 use crate::logger::NodeMessageHandler;
 
@@ -221,9 +222,9 @@ pub enum Error {
 impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Sender(e) => e.fmt(f),
+            Self::Sender(e) => write!(f, "the receiving channel has been close. Is the node still running?: {e}")
         }
     }
 }
 
-impl std::error::Error for Error {}
+impl_sourceless_error!(Error);
