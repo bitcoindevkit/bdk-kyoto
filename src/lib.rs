@@ -141,6 +141,7 @@ where
                 logger.handle_tx_sent();
             }
             NodeMessage::TxBroadcastFailure(_r) => {}
+            NodeMessage::ConnectionsMet => logger.handle_connections_met(),
             _ => (),
         }
     }
