@@ -18,6 +18,8 @@ pub trait NodeMessageHandler: Send + Sync + Debug + 'static {
     fn handle_warning(&self, warning: Warning);
     /// Handle a change in the node's state.
     fn handle_state_changed(&self, state: NodeState);
+    /// The required number of connections for the node was met.
+    fn handle_connections_met(&self);
     /// A transaction was broadcast to at least one peer.
     fn handle_tx_sent(&self);
     /// A list of block heights were reorganized
@@ -39,29 +41,33 @@ impl PrintLogger {
 
 impl NodeMessageHandler for PrintLogger {
     fn handle_dialog(&self, dialog: String) {
-        println!("{dialog}")
+        println!("{dialog}");
     }
 
     fn handle_warning(&self, warning: Warning) {
-        println!("{warning}")
+        println!("{warning}");
     }
 
     fn handle_state_changed(&self, state: NodeState) {
-        println!("State change: {state}")
+        println!("State change: {state}");
     }
 
     fn handle_tx_sent(&self) {
-        println!("Transaction sent")
+        println!("Transaction sent");
     }
 
     fn handle_blocks_disconnected(&self, blocks: Vec<u32>) {
         for block in blocks {
-            println!("Block {block} was reorganized.");
+            println!("Block {block} was reorganized");
         }
     }
 
     fn handle_synced(&self, tip: u32) {
-        println!("Synced to tip {tip}")
+        println!("Synced to tip {tip}");
+    }
+    
+    fn handle_connections_met(&self) {
+        println!("Required connections met");
     }
 }
 
@@ -98,12 +104,16 @@ impl NodeMessageHandler for TraceLogger {
 
     fn handle_blocks_disconnected(&self, blocks: Vec<u32>) {
         for block in blocks {
-            tracing::warn!("Block {block} was reorganized.");
+            tracing::warn!("Block {block} was reorganized");
         }
     }
 
     fn handle_synced(&self, tip: u32) {
         tracing::info!("Synced to height: {tip}")
+    }
+    
+    fn handle_connections_met(&self) {
+        tracing::info!("Required connections met")
     }
 }
 
@@ -111,6 +121,7 @@ impl NodeMessageHandler for () {
     fn handle_dialog(&self, _dialog: String) {}
     fn handle_warning(&self, _warning: Warning) {}
     fn handle_state_changed(&self, _state: NodeState) {}
+    fn handle_connections_met(&self) {}
     fn handle_tx_sent(&self) {}
     fn handle_blocks_disconnected(&self, _blocks: Vec<u32>) {}
     fn handle_synced(&self, _tip: u32) {}
