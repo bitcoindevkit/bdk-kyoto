@@ -223,7 +223,10 @@ pub enum Error {
 impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Sender(e) => write!(f, "the receiving channel has been close. Is the node still running?: {e}")
+            Self::Sender(e) => write!(
+                f,
+                "the receiving channel has been close. Is the node still running?: {e}"
+            ),
         }
     }
 }

@@ -65,7 +65,7 @@ impl NodeMessageHandler for PrintLogger {
     fn handle_synced(&self, tip: u32) {
         println!("Synced to tip {tip}");
     }
-    
+
     fn handle_connections_met(&self) {
         println!("Required connections met");
     }
@@ -111,7 +111,7 @@ impl NodeMessageHandler for TraceLogger {
     fn handle_synced(&self, tip: u32) {
         tracing::info!("Synced to height: {tip}")
     }
-    
+
     fn handle_connections_met(&self) {
         tracing::info!("Required connections met")
     }

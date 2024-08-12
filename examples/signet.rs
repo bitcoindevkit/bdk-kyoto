@@ -1,8 +1,8 @@
+use bdk_wallet::chain::Merge;
 use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 use std::sync::Arc;
-use bdk_wallet::chain::Merge;
 use tokio::task;
 
 use bdk_kyoto::logger::PrintLogger;

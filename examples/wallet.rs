@@ -5,7 +5,7 @@ use bdk_kyoto::builder::LightClientBuilder;
 use bdk_kyoto::logger::TraceLogger;
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::{KeychainKind, Wallet};
-use kyoto::TrustedPeer;
+use kyoto::{ServiceFlags, TrustedPeer};
 
 /// Peer address whitelist
 const PEERS: &[IpAddr] = &[IpAddr::V4(Ipv4Addr::new(23, 137, 57, 100))];
@@ -22,7 +22,11 @@ async fn main() -> anyhow::Result<()> {
 
     let peers = PEERS
         .into_iter()
-        .map(|ip| TrustedPeer::from_ip(*ip))
+        .map(|ip| {
+            let mut peer = TrustedPeer::from_ip(*ip);
+            peer.set_services(ServiceFlags::P2P_V2);
+            peer
+        })
         .collect();
 
     let mut wallet = Wallet::create(desc, change_desc)
