@@ -9,7 +9,7 @@ tracing-subscriber = { version = "0.3", optional = true }
 
 [dependencies.kyoto]
 git = "https://github.com/rustaceanrob/kyoto"
-rev = "678b56f63842b316735c8b54a3bb9fc1055aef48"
+rev = "3ac764e52c361a5fec61f151b0e21cf2dd0326d2"
 
 [dependencies.bdk_wallet]
 version = "1.0.0-beta.1"
