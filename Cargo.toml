@@ -7,9 +7,9 @@ edition = "2021"
 tracing = { version = "0.1", optional = true }
 tracing-subscriber = { version = "0.3", optional = true }
 
-[dependencies.kyoto]
+[dependencies.kyoto-cbf]
 git = "https://github.com/rustaceanrob/kyoto"
-rev = "3ac764e52c361a5fec61f151b0e21cf2dd0326d2"
+rev = "450f1e1526d2e30608e12f94d7c528accedc727e"
 
 [dependencies.bdk_wallet]
 version = "1.0.0-beta.1"

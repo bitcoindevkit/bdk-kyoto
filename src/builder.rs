@@ -71,6 +71,7 @@ impl<'a> LightClientBuilder<'a> {
         self
     }
 
+    // Get the most recent checkpoint that is less than the recovery height.
     fn get_checkpoint_for_height(height: u32, network: &Network) -> HeaderCheckpoint {
         let checkpoints: Vec<HeaderCheckpoint> = match network {
             Network::Bitcoin => MAINNET_HEADER_CP
@@ -117,6 +118,8 @@ impl<'a> LightClientBuilder<'a> {
         }
         match self.birthday_height {
             Some(birthday) => {
+                // If there is a birthday at a height less than our local chain, we may assume we've already synced
+                // the wallet past the birthday height and no longer need it.
                 if birthday < self.wallet.local_chain().tip().height() {
                     let block_id = self.wallet.local_chain().tip();
                     let header_cp = HeaderCheckpoint::new(block_id.height(), block_id.hash());
@@ -127,6 +130,9 @@ impl<'a> LightClientBuilder<'a> {
                 }
             }
             None => {
+                // If there is no birthday provided and the local chain starts at the genesis block, we assume this
+                // is a new wallet and use the most recent checkpoint. Otherwise we sync from the last known tip in the
+                // LocalChain.
                 let block_id = self.wallet.local_chain().tip();
                 if block_id.height() > 0 {
                     let header_cp = HeaderCheckpoint::new(block_id.height(), block_id.hash());
@@ -140,6 +146,7 @@ impl<'a> LightClientBuilder<'a> {
         node_builder =
             node_builder.num_required_peers(self.connections.unwrap_or(RECOMMENDED_PEERS));
         let mut spks: HashSet<ScriptBuf> = HashSet::new();
+        // Reveal 20 scripts ahead of the last revealed index so we don't miss any transactions.
         for keychain in [KeychainKind::External, KeychainKind::Internal] {
             for index in 0..=self
                 .wallet
