@@ -19,24 +19,19 @@ use crate::logger::NodeMessageHandler;
 
 pub mod builder;
 pub mod logger;
-
+pub use kyoto::node::error::ClientError;
 pub use kyoto::{
-    node::{
-        self,
-        client::{self, Receiver},
-        messages::{NodeMessage, SyncUpdate},
-        node::Node,
-    },
-    IndexedBlock, TrustedPeer, TxBroadcast, TxBroadcastPolicy,
+    ClientSender, IndexedBlock, Node, NodeMessage, Receiver, SyncUpdate, TrustedPeer, TxBroadcast,
+    TxBroadcastPolicy,
 };
 
-/// Client.
+/// A compact block filter client.
 #[derive(Debug)]
 pub struct Client<K> {
     // channel sender
-    sender: client::ClientSender,
+    sender: kyoto::ClientSender,
     // channel receiver
-    receiver: kyoto::node::client::Receiver<NodeMessage>,
+    receiver: kyoto::Receiver<NodeMessage>,
     // changes to local chain
     chain: local_chain::LocalChain,
     // receive graph
@@ -53,7 +48,7 @@ where
     pub fn from_index(
         cp: CheckPoint,
         index: &KeychainTxOutIndex<K>,
-        client: client::Client,
+        client: kyoto::Client,
     ) -> Self {
         let (sender, receiver) = client.split();
         Self {
@@ -188,12 +183,12 @@ where
 /// Type that broadcasts transactions to the network.
 #[derive(Debug)]
 pub struct TransactionBroadcaster {
-    sender: client::ClientSender,
+    sender: kyoto::ClientSender,
 }
 
 impl TransactionBroadcaster {
     /// Create a new transaction broadcaster with the given client `sender`.
-    fn new(sender: client::ClientSender) -> Self {
+    fn new(sender: kyoto::ClientSender) -> Self {
         Self { sender }
     }
 
@@ -217,7 +212,7 @@ impl TransactionBroadcaster {
 #[derive(Debug)]
 pub enum Error {
     /// The channel to receive a message was closed. Likely the node has stopped running.
-    Sender(node::error::ClientError),
+    Sender(ClientError),
 }
 
 impl core::fmt::Display for Error {

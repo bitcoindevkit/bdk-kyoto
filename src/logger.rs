@@ -2,8 +2,8 @@
 
 use std::fmt::Debug;
 
-pub use kyoto::node::messages::Warning;
-pub use kyoto::node::node::NodeState;
+pub use kyoto::Warning;
+pub use kyoto::NodeState;
 pub use kyoto::Txid;
 
 /// Handle dialog and state changes from a node with some arbitrary behavior.
@@ -14,7 +14,7 @@ pub use kyoto::Txid;
 pub trait NodeMessageHandler: Send + Sync + Debug + 'static {
     /// Make use of some message the node has sent.
     fn handle_dialog(&self, dialog: String);
-    /// Make use of some warning the ndoe has sent.
+    /// Make use of some warning the node has sent.
     fn handle_warning(&self, warning: Warning);
     /// Handle a change in the node's state.
     fn handle_state_changed(&self, state: NodeState);
