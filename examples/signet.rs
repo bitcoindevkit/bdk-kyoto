@@ -64,7 +64,8 @@ async fn main() -> anyhow::Result<()> {
             )?,
         ))
         .num_required_peers(2)
-        .build_node();
+        .build_node()
+        .unwrap();
     let mut client = Client::from_index(chain.tip(), &graph.index, client);
     client.set_logger(Arc::new(PrintLogger::new()));
 
