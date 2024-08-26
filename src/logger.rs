@@ -2,9 +2,9 @@
 
 use std::fmt::Debug;
 
-pub use kyoto::Warning;
 pub use kyoto::NodeState;
 pub use kyoto::Txid;
+pub use kyoto::Warning;
 
 /// Handle dialog and state changes from a node with some arbitrary behavior.
 /// The primary purpose of this trait is not to respond to events by persisting changes,
@@ -13,19 +13,21 @@ pub use kyoto::Txid;
 /// automatically in [`Client::update`].
 pub trait NodeMessageHandler: Send + Sync + Debug + 'static {
     /// Make use of some message the node has sent.
-    fn handle_dialog(&self, dialog: String);
+    fn dialog(&self, dialog: String);
     /// Make use of some warning the node has sent.
-    fn handle_warning(&self, warning: Warning);
+    fn warning(&self, warning: Warning);
     /// Handle a change in the node's state.
-    fn handle_state_changed(&self, state: NodeState);
+    fn state_changed(&self, state: NodeState);
     /// The required number of connections for the node was met.
-    fn handle_connections_met(&self);
+    fn connections_met(&self);
     /// A transaction was broadcast to at least one peer.
-    fn handle_tx_sent(&self);
+    fn tx_sent(&self, txid: &Txid);
+    /// A transaction was rejected or failed to broadcast.
+    fn tx_failed(&self, txid: &Txid);
     /// A list of block heights were reorganized
-    fn handle_blocks_disconnected(&self, blocks: Vec<u32>);
+    fn blocks_disconnected(&self, blocks: Vec<u32>);
     /// The node has synced to the height of the connected peers.
-    fn handle_synced(&self, tip: u32);
+    fn synced(&self, tip: u32);
 }
 
 /// Print messages from the node to the console
@@ -40,33 +42,37 @@ impl PrintLogger {
 }
 
 impl NodeMessageHandler for PrintLogger {
-    fn handle_dialog(&self, dialog: String) {
+    fn dialog(&self, dialog: String) {
         println!("{dialog}");
     }
 
-    fn handle_warning(&self, warning: Warning) {
+    fn warning(&self, warning: Warning) {
         println!("{warning}");
     }
 
-    fn handle_state_changed(&self, state: NodeState) {
+    fn state_changed(&self, state: NodeState) {
         println!("State change: {state}");
     }
 
-    fn handle_tx_sent(&self) {
-        println!("Transaction sent");
+    fn tx_sent(&self, txid: &Txid) {
+        println!("Transaction sent: {txid}");
     }
 
-    fn handle_blocks_disconnected(&self, blocks: Vec<u32>) {
+    fn tx_failed(&self, txid: &Txid) {
+        println!("Transaction failed: {txid}");
+    }
+
+    fn blocks_disconnected(&self, blocks: Vec<u32>) {
         for block in blocks {
             println!("Block {block} was reorganized");
         }
     }
 
-    fn handle_synced(&self, tip: u32) {
+    fn synced(&self, tip: u32) {
         println!("Synced to tip {tip}");
     }
 
-    fn handle_connections_met(&self) {
+    fn connections_met(&self) {
         println!("Required connections met");
     }
 }
@@ -86,43 +92,48 @@ impl TraceLogger {
 
 #[cfg(feature = "trace")]
 impl NodeMessageHandler for TraceLogger {
-    fn handle_dialog(&self, dialog: String) {
+    fn dialog(&self, dialog: String) {
         tracing::info!("{dialog}")
     }
 
-    fn handle_warning(&self, warning: Warning) {
+    fn warning(&self, warning: Warning) {
         tracing::warn!("{warning}")
     }
 
-    fn handle_state_changed(&self, state: NodeState) {
+    fn state_changed(&self, state: NodeState) {
         tracing::info!("State change: {state}")
     }
 
-    fn handle_tx_sent(&self) {
-        tracing::info!("Transaction sent")
+    fn tx_sent(&self, txid: &Txid) {
+        tracing::info!("Transaction sent: {txid}")
     }
 
-    fn handle_blocks_disconnected(&self, blocks: Vec<u32>) {
+    fn tx_failed(&self, txid: &Txid) {
+        tracing::info!("Transaction failed: {txid}")
+    }
+
+    fn blocks_disconnected(&self, blocks: Vec<u32>) {
         for block in blocks {
             tracing::warn!("Block {block} was reorganized");
         }
     }
 
-    fn handle_synced(&self, tip: u32) {
+    fn synced(&self, tip: u32) {
         tracing::info!("Synced to height: {tip}")
     }
 
-    fn handle_connections_met(&self) {
+    fn connections_met(&self) {
         tracing::info!("Required connections met")
     }
 }
 
 impl NodeMessageHandler for () {
-    fn handle_dialog(&self, _dialog: String) {}
-    fn handle_warning(&self, _warning: Warning) {}
-    fn handle_state_changed(&self, _state: NodeState) {}
-    fn handle_connections_met(&self) {}
-    fn handle_tx_sent(&self) {}
-    fn handle_blocks_disconnected(&self, _blocks: Vec<u32>) {}
-    fn handle_synced(&self, _tip: u32) {}
+    fn dialog(&self, _dialog: String) {}
+    fn warning(&self, _warning: Warning) {}
+    fn state_changed(&self, _state: NodeState) {}
+    fn connections_met(&self) {}
+    fn tx_sent(&self, _txid: &Txid) {}
+    fn tx_failed(&self, _txid: &Txid) {}
+    fn blocks_disconnected(&self, _blocks: Vec<u32>) {}
+    fn synced(&self, _tip: u32) {}
 }

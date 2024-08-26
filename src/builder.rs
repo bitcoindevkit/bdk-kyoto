@@ -1,14 +1,12 @@
 //! [`bdk_kyoto::Client`] builder
 
-use std::{collections::HashSet, path::PathBuf, str::FromStr, sync::Arc};
+use std::{collections::HashSet, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 
-use bdk_wallet::{KeychainKind, Wallet};
+use bdk_wallet::{chain::local_chain::MissingGenesisError, KeychainKind, Wallet};
 use kyoto::{
     chain::checkpoints::{
         HeaderCheckpoint, MAINNET_HEADER_CP, REGTEST_HEADER_CP, SIGNET_HEADER_CP,
-    },
-    node::{builder::NodeBuilder, node::Node},
-    BlockHash, Network, ScriptBuf, TrustedPeer,
+    }, node::{builder::NodeBuilder, node::Node}, BlockHash, DatabaseError, Network, ScriptBuf, TrustedPeer
 };
 
 use crate::{logger::NodeMessageHandler, Client};
@@ -24,6 +22,7 @@ pub struct LightClientBuilder<'a> {
     connections: Option<u8>,
     birthday_height: Option<u32>,
     data_dir: Option<PathBuf>,
+    timeout: Option<Duration>,
     message_handler: Option<Arc<dyn NodeMessageHandler>>,
 }
 
@@ -36,6 +35,7 @@ impl<'a> LightClientBuilder<'a> {
             connections: None,
             birthday_height: None,
             data_dir: None,
+            timeout: None,
             message_handler: None,
         }
     }
@@ -68,6 +68,12 @@ impl<'a> LightClientBuilder<'a> {
     /// height provided, this height will be ignored.
     pub fn scan_after(mut self, height: u32) -> Self {
         self.birthday_height = Some(height);
+        self
+    }
+
+    /// Configure the duration of time a remote node has to respond to a message.
+    pub fn timeout_duration(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
         self
     }
 
@@ -110,7 +116,7 @@ impl<'a> LightClientBuilder<'a> {
     }
 
     /// Build a light client node and a client to interact with the node
-    pub fn build(self) -> (Node, Client<KeychainKind>) {
+    pub fn build(self) -> Result<(Node, Client<KeychainKind>), Error> {
         let network = self.wallet.network();
         let mut node_builder = NodeBuilder::new(network);
         if let Some(whitelist) = self.peers {
@@ -143,6 +149,9 @@ impl<'a> LightClientBuilder<'a> {
         if let Some(dir) = self.data_dir {
             node_builder = node_builder.add_data_dir(dir);
         }
+        if let Some(duration) = self.timeout {
+            node_builder = node_builder.set_response_timeout(duration)
+        }
         node_builder =
             node_builder.num_required_peers(self.connections.unwrap_or(RECOMMENDED_PEERS));
         let mut spks: HashSet<ScriptBuf> = HashSet::new();
@@ -158,15 +167,54 @@ impl<'a> LightClientBuilder<'a> {
                 spks.insert(self.wallet.peek_address(keychain, index).script_pubkey());
             }
         }
-        let (node, kyoto_client) = node_builder.add_scripts(spks).build_node().unwrap();
+        let (node, kyoto_client) = node_builder.add_scripts(spks).build_node()?;
         let mut client = Client::from_index(
             self.wallet.local_chain().tip(),
             self.wallet.spk_index(),
             kyoto_client,
-        );
+        )?;
         if let Some(logger) = self.message_handler {
             client.set_logger(logger)
         }
-        (node, client)
+        Ok((node, client))
+    }
+}
+
+/// Errors thrown by a client.
+#[derive(Debug)]
+pub enum Error {
+    /// The `LocalChain` was not initialized with a genesis block.
+    MissingGenesis(MissingGenesisError),
+    /// The database encountered a fatal error.
+    Database(DatabaseError)
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::MissingGenesis(e) => write!(f, "genesis block not found: {e}"),
+            Error::Database(e) => write!(f, "fatal database error: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Error::MissingGenesis(e) => Some(e),
+            Error::Database(e) => Some(e),
+        }
+    }
+}
+
+impl From<MissingGenesisError> for Error {
+    fn from(value: MissingGenesisError) -> Self {
+        Error::MissingGenesis(value)
+    }
+}
+
+impl From<DatabaseError> for Error {
+    fn from(value: DatabaseError) -> Self {
+        Error::Database(value)
     }
 }

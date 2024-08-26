@@ -38,7 +38,8 @@ async fn main() -> anyhow::Result<()> {
         .scan_after(170_000)
         .peers(peers)
         .logger(Arc::new(TraceLogger::new()))
-        .build();
+        .build()
+        .unwrap();
 
     tokio::task::spawn(async move { node.run().await });
 

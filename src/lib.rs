@@ -19,6 +19,8 @@ use crate::logger::NodeMessageHandler;
 
 pub mod builder;
 pub mod logger;
+pub use bdk_wallet::chain::local_chain::MissingGenesisError;
+pub use kyoto::db::error::DatabaseError;
 pub use kyoto::node::error::ClientError;
 pub use kyoto::{
     ClientSender, IndexedBlock, Node, NodeMessage, Receiver, SyncUpdate, TrustedPeer, TxBroadcast,
@@ -49,15 +51,15 @@ where
         cp: CheckPoint,
         index: &KeychainTxOutIndex<K>,
         client: kyoto::Client,
-    ) -> Self {
+    ) -> Result<Self, MissingGenesisError> {
         let (sender, receiver) = client.split();
-        Self {
+        Ok(Self {
             sender,
             receiver,
-            chain: LocalChain::from_tip(cp).unwrap(),
+            chain: LocalChain::from_tip(cp)?,
             graph: IndexedTxGraph::new(index.clone()),
             message_handler: Arc::new(()),
-        }
+        })
     }
 
     /// Add a logger to handle node messages
@@ -70,7 +72,7 @@ where
     pub async fn update(&mut self) -> Option<FullScanResult<K>> {
         let mut chain_changeset = BTreeMap::new();
         while let Ok(message) = self.receiver.recv().await {
-            self.handle_log(&message);
+            self.log(&message);
             match message {
                 NodeMessage::Block(IndexedBlock { height, block }) => {
                     let hash = block.header.block_hash();
@@ -101,8 +103,7 @@ where
             }
         }
         self.chain
-            .apply_changeset(&local_chain::ChangeSet::from(chain_changeset))
-            .unwrap();
+            .apply_changeset(&local_chain::ChangeSet::from(chain_changeset)).expect("chain was initialized with genesis");
         // Can we just do this?
         // let graph = core::mem::take(&mut self.graph);
         Some(FullScanResult {
@@ -113,32 +114,34 @@ where
     }
 
     // Send dialogs to an arbitrary logger
-    fn handle_log(&self, message: &NodeMessage) {
+    fn log(&self, message: &NodeMessage) {
         let logger = &self.message_handler;
         match message {
-            NodeMessage::Dialog(d) => logger.handle_dialog(d.clone()),
-            NodeMessage::Warning(w) => logger.handle_warning(w.clone()),
-            NodeMessage::StateChange(s) => logger.handle_state_changed(*s),
+            NodeMessage::Dialog(d) => logger.dialog(d.clone()),
+            NodeMessage::Warning(w) => logger.warning(w.clone()),
+            NodeMessage::StateChange(s) => logger.state_changed(*s),
             NodeMessage::Block(b) => {
                 let hash = b.block.header.block_hash();
-                logger.handle_dialog(format!("Applying Block: {hash}"));
+                logger.dialog(format!("Applying Block: {hash}"));
             }
             NodeMessage::Synced(SyncUpdate {
                 tip,
                 recent_history: _,
             }) => {
-                logger.handle_synced(tip.height);
+                logger.synced(tip.height);
             }
             NodeMessage::BlocksDisconnected(headers) => {
                 logger
-                    .handle_blocks_disconnected(headers.into_iter().map(|dc| dc.height).collect());
+                    .blocks_disconnected(headers.into_iter().map(|dc| dc.height).collect());
             }
-            NodeMessage::TxSent(_t) => {
-                // If this becomes a type in UniFFI then we can pass it to handle_tx_sent
-                logger.handle_tx_sent();
+            NodeMessage::TxSent(t) => {
+                // If this becomes a type in UniFFI then we can pass it to tx_sent
+                logger.tx_sent(t);
             }
-            NodeMessage::TxBroadcastFailure(_r) => {}
-            NodeMessage::ConnectionsMet => logger.handle_connections_met(),
+            NodeMessage::TxBroadcastFailure(r) => {
+                logger.tx_failed(&r.txid)
+            }
+            NodeMessage::ConnectionsMet => logger.connections_met(),
             _ => (),
         }
     }
