@@ -11,8 +11,8 @@ use bdk_wallet::bitcoin::{
     constants::genesis_block, secp256k1::Secp256k1, Address, BlockHash, Network, ScriptBuf,
 };
 use bdk_wallet::chain::{
-    keychain_txout::KeychainTxOutIndex, local_chain::LocalChain, miniscript::Descriptor,
-    FullTxOut, IndexedTxGraph, SpkIterator,
+    keychain_txout::KeychainTxOutIndex, local_chain::LocalChain, miniscript::Descriptor, FullTxOut,
+    IndexedTxGraph, SpkIterator,
 };
 use kyoto::chain::checkpoints::HeaderCheckpoint;
 use kyoto::node::builder::NodeBuilder;
@@ -66,7 +66,7 @@ async fn main() -> anyhow::Result<()> {
         .num_required_peers(2)
         .build_node()
         .unwrap();
-    let mut client = Client::from_index(chain.tip(), &graph.index, client);
+    let mut client = Client::from_index(chain.tip(), &graph.index, client).unwrap();
     client.set_logger(Arc::new(PrintLogger::new()));
 
     // Run the node
@@ -78,7 +78,9 @@ async fn main() -> anyhow::Result<()> {
     if let Some(update) = client.update().await {
         let _ = chain.apply_update(update.chain_update.unwrap())?;
         let mut indexed_tx_graph_changeset = graph.apply_update(update.tx_update);
-        let index_changeset = graph.index.reveal_to_target_multi(&update.last_active_indices);
+        let index_changeset = graph
+            .index
+            .reveal_to_target_multi(&update.last_active_indices);
         indexed_tx_graph_changeset.merge(index_changeset.into());
         let _ = graph.apply_changeset(indexed_tx_graph_changeset);
     }
