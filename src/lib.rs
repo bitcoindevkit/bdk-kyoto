@@ -6,25 +6,22 @@ use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
 use bdk_wallet::bitcoin::{ScriptBuf, Transaction};
-use bdk_wallet::chain::ConfirmationBlockTime;
 use bdk_wallet::chain::{
     keychain_txout::KeychainTxOutIndex,
     local_chain::{self, CheckPoint, LocalChain},
     spk_client::FullScanResult,
     IndexedTxGraph,
 };
-use kyoto::impl_sourceless_error;
+use bdk_wallet::chain::{ConfirmationBlockTime, TxUpdate};
 
 use crate::logger::NodeMessageHandler;
 
 pub mod builder;
 pub mod logger;
 pub use bdk_wallet::chain::local_chain::MissingGenesisError;
-pub use kyoto::db::error::DatabaseError;
-pub use kyoto::node::error::ClientError;
 pub use kyoto::{
-    ClientSender, IndexedBlock, Node, NodeMessage, Receiver, SyncUpdate, TrustedPeer, TxBroadcast,
-    TxBroadcastPolicy,
+    ClientError, ClientSender, DatabaseError, IndexedBlock, Node, NodeMessage, Receiver,
+    SyncUpdate, TrustedPeer, TxBroadcast, TxBroadcastPolicy,
 };
 
 /// A compact block filter client.
@@ -51,7 +48,7 @@ where
         cp: CheckPoint,
         index: &KeychainTxOutIndex<K>,
         client: kyoto::Client,
-    ) -> Result<Self, MissingGenesisError> {
+    ) -> Result<Self, Error> {
         let (sender, receiver) = client.split();
         Ok(Self {
             sender,
@@ -103,12 +100,15 @@ where
             }
         }
         self.chain
-            .apply_changeset(&local_chain::ChangeSet::from(chain_changeset)).expect("chain was initialized with genesis");
-        // Can we just do this?
-        // let graph = core::mem::take(&mut self.graph);
+            .apply_changeset(&local_chain::ChangeSet::from(chain_changeset))
+            .expect("chain was initialized with genesis");
+        let tx_update = TxUpdate::from(self.graph.graph().clone());
+        let graph = core::mem::take(&mut self.graph);
+        let last_active_indices = graph.index.last_used_indices();
+        self.graph = IndexedTxGraph::new(graph.index);
         Some(FullScanResult {
-            tx_update: self.graph.graph().clone().into(),
-            last_active_indices: self.graph.index.last_used_indices(),
+            tx_update,
+            last_active_indices,
             chain_update: Some(self.chain.tip()),
         })
     }
@@ -131,16 +131,13 @@ where
                 logger.synced(tip.height);
             }
             NodeMessage::BlocksDisconnected(headers) => {
-                logger
-                    .blocks_disconnected(headers.into_iter().map(|dc| dc.height).collect());
+                logger.blocks_disconnected(headers.iter().map(|dc| dc.height).collect());
             }
             NodeMessage::TxSent(t) => {
                 // If this becomes a type in UniFFI then we can pass it to tx_sent
                 logger.tx_sent(t);
             }
-            NodeMessage::TxBroadcastFailure(r) => {
-                logger.tx_failed(&r.txid)
-            }
+            NodeMessage::TxBroadcastFailure(r) => logger.tx_failed(&r.txid),
             NodeMessage::ConnectionsMet => logger.connections_met(),
             _ => (),
         }
@@ -158,20 +155,17 @@ where
                 broadcast_policy: policy,
             })
             .await
-            .map_err(Error::Sender)
+            .map_err(Error::from)
     }
 
     /// Add more scripts to the node. Could this just check a SPK index?
     pub async fn add_scripts(&self, scripts: HashSet<ScriptBuf>) -> Result<(), Error> {
-        self.sender
-            .add_scripts(scripts)
-            .await
-            .map_err(Error::Sender)
+        self.sender.add_scripts(scripts).await.map_err(Error::from)
     }
 
     /// Shutdown the node.
     pub async fn shutdown(&self) -> Result<(), Error> {
-        self.sender.shutdown().await.map_err(Error::Sender)
+        self.sender.shutdown().await.map_err(Error::from)
     }
 
     /// Get a structure to broadcast transactions. Useful for broadcasting transactions and updating concurrently.
@@ -209,7 +203,7 @@ impl TransactionBroadcaster {
                 broadcast_policy: policy,
             })
             .await
-            .map_err(Error::Sender)
+            .map_err(Error::from)
     }
 }
 
@@ -218,6 +212,8 @@ impl TransactionBroadcaster {
 pub enum Error {
     /// The channel to receive a message was closed. Likely the node has stopped running.
     Sender(ClientError),
+    /// The [`LocalChain`] provided has no genesis block.
+    MissingGenesis(MissingGenesisError),
 }
 
 impl core::fmt::Display for Error {
@@ -227,8 +223,30 @@ impl core::fmt::Display for Error {
                 f,
                 "the receiving channel has been close. Is the node still running?: {e}"
             ),
+            Self::MissingGenesis(e) => {
+                write!(f, "the local chain provided has no genesis block: {e}")
+            }
         }
     }
 }
 
-impl_sourceless_error!(Error);
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Error::Sender(s) => Some(s),
+            Error::MissingGenesis(m) => Some(m),
+        }
+    }
+}
+
+impl From<MissingGenesisError> for Error {
+    fn from(value: MissingGenesisError) -> Self {
+        Error::MissingGenesis(value)
+    }
+}
+
+impl From<ClientError> for Error {
+    fn from(value: ClientError) -> Self {
+        Error::Sender(value)
+    }
+}
