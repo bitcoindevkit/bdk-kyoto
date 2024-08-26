@@ -158,7 +158,7 @@ impl<'a> LightClientBuilder<'a> {
                 spks.insert(self.wallet.peek_address(keychain, index).script_pubkey());
             }
         }
-        let (node, kyoto_client) = node_builder.add_scripts(spks).build_node();
+        let (node, kyoto_client) = node_builder.add_scripts(spks).build_node().unwrap();
         let mut client = Client::from_index(
             self.wallet.local_chain().tip(),
             self.wallet.spk_index(),

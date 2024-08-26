@@ -12,7 +12,7 @@ use bdk_wallet::bitcoin::{
 };
 use bdk_wallet::chain::{
     keychain_txout::KeychainTxOutIndex, local_chain::LocalChain, miniscript::Descriptor,
-    spk_client::FullScanResult, FullTxOut, IndexedTxGraph, SpkIterator,
+    FullTxOut, IndexedTxGraph, SpkIterator,
 };
 use kyoto::chain::checkpoints::HeaderCheckpoint;
 use kyoto::node::builder::NodeBuilder;
@@ -64,7 +64,8 @@ async fn main() -> anyhow::Result<()> {
             )?,
         ))
         .num_required_peers(2)
-        .build_node();
+        .build_node()
+        .unwrap();
     let mut client = Client::from_index(chain.tip(), &graph.index, client);
     client.set_logger(Arc::new(PrintLogger::new()));
 
@@ -75,16 +76,9 @@ async fn main() -> anyhow::Result<()> {
 
     // Sync and apply updates
     if let Some(update) = client.update().await {
-        let FullScanResult {
-            graph_update,
-            chain_update,
-            last_active_indices,
-        } = update;
-
-        let _ = chain.apply_update(chain_update)?;
-
-        let mut indexed_tx_graph_changeset = graph.apply_update(graph_update);
-        let index_changeset = graph.index.reveal_to_target_multi(&last_active_indices);
+        let _ = chain.apply_update(update.chain_update.unwrap())?;
+        let mut indexed_tx_graph_changeset = graph.apply_update(update.tx_update);
+        let index_changeset = graph.index.reveal_to_target_multi(&update.last_active_indices);
         indexed_tx_graph_changeset.merge(index_changeset.into());
         let _ = graph.apply_changeset(indexed_tx_graph_changeset);
     }

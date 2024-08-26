@@ -103,10 +103,12 @@ where
         self.chain
             .apply_changeset(&local_chain::ChangeSet::from(chain_changeset))
             .unwrap();
+        // Can we just do this?
+        // let graph = core::mem::take(&mut self.graph);
         Some(FullScanResult {
-            graph_update: self.graph.graph().clone(),
-            chain_update: self.chain.tip(),
+            tx_update: self.graph.graph().clone().into(),
             last_active_indices: self.graph.index.last_used_indices(),
+            chain_update: Some(self.chain.tip()),
         })
     }
 
