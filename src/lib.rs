@@ -5,23 +5,26 @@ use core::fmt;
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
-use bdk_wallet::bitcoin::{ScriptBuf, Transaction};
-use bdk_wallet::chain::{
+use bdk_chain::{
     keychain_txout::KeychainTxOutIndex,
     local_chain::{self, CheckPoint, LocalChain},
     spk_client::FullScanResult,
     IndexedTxGraph,
 };
-use bdk_wallet::chain::{ConfirmationBlockTime, TxUpdate};
+use bdk_chain::{ConfirmationBlockTime, TxUpdate};
+use kyoto::{TxBroadcast, IndexedBlock};
 
 use crate::logger::NodeMessageHandler;
 
+#[cfg(feature = "wallet")]
 pub mod builder;
 pub mod logger;
-pub use bdk_wallet::chain::local_chain::MissingGenesisError;
+
+pub use bdk_chain::local_chain::MissingGenesisError;
 pub use kyoto::{
-    ClientError, ClientSender, DatabaseError, IndexedBlock, Node, NodeMessage, Receiver,
-    SyncUpdate, TrustedPeer, TxBroadcast, TxBroadcastPolicy,
+    ClientError, DatabaseError, Node, NodeBuilder, NodeMessage, NodeState, Receiver,
+    ScriptBuf, SyncUpdate, Transaction, TrustedPeer, TxBroadcastPolicy, Txid, Warning,
+    MAINNET_HEADER_CP, SIGNET_HEADER_CP,
 };
 
 /// A compact block filter client.

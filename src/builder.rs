@@ -7,8 +7,7 @@ use kyoto::{
     chain::checkpoints::{
         HeaderCheckpoint, MAINNET_HEADER_CP, REGTEST_HEADER_CP, SIGNET_HEADER_CP,
     },
-    node::{builder::NodeBuilder, node::Node},
-    BlockHash, DatabaseError, Network, ScriptBuf, TrustedPeer,
+    BlockHash, DatabaseError, Network, Node, NodeBuilder, ScriptBuf, TrustedPeer,
 };
 
 use crate::{logger::NodeMessageHandler, Client};
