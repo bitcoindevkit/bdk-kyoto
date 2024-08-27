@@ -30,6 +30,8 @@ pub use kyoto::{
 /// A compact block filter client.
 #[derive(Debug)]
 pub struct Client<K> {
+    // a struct that can generate senders and receviers
+    client: kyoto::Client,
     // channel sender
     sender: kyoto::ClientSender,
     // channel receiver
@@ -52,8 +54,10 @@ where
         index: &KeychainTxOutIndex<K>,
         client: kyoto::Client,
     ) -> Result<Self, Error> {
-        let (sender, receiver) = client.split();
+        let receiver = client.receiver();
+        let sender = client.sender();
         Ok(Self {
+            client,
             sender,
             receiver,
             chain: LocalChain::from_tip(cp)?,
@@ -168,17 +172,17 @@ where
 
     /// Shutdown the node.
     pub async fn shutdown(&self) -> Result<(), Error> {
-        self.sender.shutdown().await.map_err(Error::from)
+        self.client.shutdown().await.map_err(Error::from)
     }
 
     /// Get a structure to broadcast transactions. Useful for broadcasting transactions and updating concurrently.
     pub fn transaction_broadcaster(&self) -> TransactionBroadcaster {
-        TransactionBroadcaster::new(self.sender.clone())
+        TransactionBroadcaster::new(self.client.sender())
     }
 
     /// Get a mutable reference to the underlying channel [`Receiver`].
-    pub fn channel_receiver(&mut self) -> &mut Receiver<NodeMessage> {
-        &mut self.receiver
+    pub fn channel_receiver(&self) -> Receiver<NodeMessage> {
+        self.client.receiver()
     }
 }
 
