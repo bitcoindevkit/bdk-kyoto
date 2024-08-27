@@ -2,11 +2,13 @@
 
 use std::{collections::HashSet, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 
-use bdk_wallet::{chain::local_chain::MissingGenesisError, KeychainKind, Wallet};
+use bdk_wallet::{KeychainKind, Wallet};
 use kyoto::{
     chain::checkpoints::{
         HeaderCheckpoint, MAINNET_HEADER_CP, REGTEST_HEADER_CP, SIGNET_HEADER_CP,
-    }, node::{builder::NodeBuilder, node::Node}, BlockHash, DatabaseError, Network, ScriptBuf, TrustedPeer
+    },
+    node::{builder::NodeBuilder, node::Node},
+    BlockHash, DatabaseError, Network, ScriptBuf, TrustedPeer,
 };
 
 use crate::{logger::NodeMessageHandler, Client};
@@ -184,9 +186,9 @@ impl<'a> LightClientBuilder<'a> {
 #[derive(Debug)]
 pub enum Error {
     /// The `LocalChain` was not initialized with a genesis block.
-    MissingGenesis(MissingGenesisError),
+    MissingGenesis(crate::Error),
     /// The database encountered a fatal error.
-    Database(DatabaseError)
+    Database(DatabaseError),
 }
 
 impl std::fmt::Display for Error {
@@ -207,8 +209,8 @@ impl std::error::Error for Error {
     }
 }
 
-impl From<MissingGenesisError> for Error {
-    fn from(value: MissingGenesisError) -> Self {
+impl From<crate::Error> for Error {
+    fn from(value: crate::Error) -> Self {
         Error::MissingGenesis(value)
     }
 }

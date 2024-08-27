@@ -56,15 +56,18 @@ async fn main() -> anyhow::Result<()> {
             // Do something here to add more scripts?
             tracing::info!("Tx count: {}", wallet.transactions().count());
             tracing::info!("Balance: {}", wallet.balance().total().to_sat());
+            let last_revealed = wallet.derivation_index(KeychainKind::External).unwrap();
             tracing::info!(
                 "Last revealed External: {}",
-                wallet.derivation_index(KeychainKind::External).unwrap()
+                last_revealed
             );
             tracing::info!(
                 "Last revealed Internal: {}",
                 wallet.derivation_index(KeychainKind::Internal).unwrap()
             );
             tracing::info!("Local chain tip: {}", wallet.local_chain().tip().height());
+            let next = wallet.peek_address(KeychainKind::External, last_revealed + 1);
+            tracing::info!("Next receiving address: {next}");
         }
     }
 }
