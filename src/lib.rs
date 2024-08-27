@@ -35,7 +35,7 @@ pub struct Client<K> {
     // channel receiver
     receiver: kyoto::Receiver<NodeMessage>,
     // changes to local chain
-    chain: local_chain::LocalChain,
+    cp: CheckPoint,
     // receive graph
     graph: IndexedTxGraph<ConfirmationBlockTime, KeychainTxOutIndex<K>>,
     // messages
@@ -56,7 +56,7 @@ where
         Ok(Self {
             sender,
             receiver,
-            chain: LocalChain::from_tip(cp)?,
+            cp,
             graph: IndexedTxGraph::new(index.clone()),
             message_handler: Arc::new(()),
         })
@@ -70,6 +70,7 @@ where
     /// Return the most recent update from the node once it has synced to the network's tip.
     /// This may take a significant portion of time during wallet recoveries or dormant wallets.
     pub async fn update(&mut self) -> Option<FullScanResult<K>> {
+        let mut chain = LocalChain::from_tip(self.cp.clone()).unwrap();
         let mut chain_changeset = BTreeMap::new();
         while let Ok(message) = self.receiver.recv().await {
             self.log(&message);
@@ -90,8 +91,8 @@ where
                     recent_history: _,
                 }) => {
                     if chain_changeset.is_empty()
-                        && self.chain.tip().height() == tip.height
-                        && self.chain.tip().hash() == tip.hash
+                        && chain.tip().height() == tip.height
+                        && chain.tip().hash() == tip.hash
                     {
                         // return early if we're already synced
                         return None;
@@ -102,7 +103,7 @@ where
                 _ => (),
             }
         }
-        self.chain
+        chain
             .apply_changeset(&local_chain::ChangeSet::from(chain_changeset))
             .expect("chain was initialized with genesis");
         let tx_update = TxUpdate::from(self.graph.graph().clone());
@@ -112,7 +113,7 @@ where
         Some(FullScanResult {
             tx_update,
             last_active_indices,
-            chain_update: Some(self.chain.tip()),
+            chain_update: Some(chain.tip()),
         })
     }
 
