@@ -2,15 +2,15 @@
 
 use std::fmt::Debug;
 
-pub use kyoto::NodeState;
-pub use kyoto::Txid;
-pub use kyoto::Warning;
+use kyoto::NodeState;
+use kyoto::Txid;
+use kyoto::Warning;
 
 /// Handle dialog and state changes from a node with some arbitrary behavior.
 /// The primary purpose of this trait is not to respond to events by persisting changes,
 /// or acting on the underlying wallet. Instead, this trait should be used to drive changes in user
 /// interface behavior or keep a simple log. Relevant events that effect on the wallet are handled
-/// automatically in [`Client::update`].
+/// automatically in [`Client::update`](crate::Client).
 pub trait NodeMessageHandler: Send + Sync + Debug + 'static {
     /// Make use of some message the node has sent.
     fn dialog(&self, dialog: String);

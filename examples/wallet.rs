@@ -57,10 +57,7 @@ async fn main() -> anyhow::Result<()> {
             tracing::info!("Tx count: {}", wallet.transactions().count());
             tracing::info!("Balance: {}", wallet.balance().total().to_sat());
             let last_revealed = wallet.derivation_index(KeychainKind::External).unwrap();
-            tracing::info!(
-                "Last revealed External: {}",
-                last_revealed
-            );
+            tracing::info!("Last revealed External: {}", last_revealed);
             tracing::info!(
                 "Last revealed Internal: {}",
                 wallet.derivation_index(KeychainKind::Internal).unwrap()
