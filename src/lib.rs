@@ -87,7 +87,7 @@ where
                 }
                 NodeMessage::Synced(SyncUpdate {
                     tip,
-                    recent_history: _,
+                    recent_history,
                 }) => {
                     if chain_changeset.is_empty()
                         && self.chain.tip().height() == tip.height
@@ -96,7 +96,9 @@ where
                         // return early if we're already synced
                         return None;
                     }
-                    chain_changeset.insert(tip.height, Some(tip.hash));
+                    recent_history.into_iter().for_each(|(height, header)| {
+                        chain_changeset.insert(height, Some(header.block_hash()));
+                    });
                     break;
                 }
                 _ => (),
