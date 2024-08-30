@@ -140,9 +140,9 @@ where
             }
             NodeMessage::TxSent(t) => {
                 // If this becomes a type in UniFFI then we can pass it to tx_sent
-                logger.tx_sent(t);
+                logger.tx_sent(*t);
             }
-            NodeMessage::TxBroadcastFailure(r) => logger.tx_failed(&r.txid),
+            NodeMessage::TxBroadcastFailure(r) => logger.tx_failed(r.txid),
             NodeMessage::ConnectionsMet => logger.connections_met(),
             _ => (),
         }

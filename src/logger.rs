@@ -21,9 +21,9 @@ pub trait NodeMessageHandler: Send + Sync + Debug + 'static {
     /// The required number of connections for the node was met.
     fn connections_met(&self);
     /// A transaction was broadcast to at least one peer.
-    fn tx_sent(&self, txid: &Txid);
+    fn tx_sent(&self, txid: Txid);
     /// A transaction was rejected or failed to broadcast.
-    fn tx_failed(&self, txid: &Txid);
+    fn tx_failed(&self, txid: Txid);
     /// A list of block heights were reorganized
     fn blocks_disconnected(&self, blocks: Vec<u32>);
     /// The node has synced to the height of the connected peers.
@@ -54,11 +54,11 @@ impl NodeMessageHandler for PrintLogger {
         println!("State change: {state}");
     }
 
-    fn tx_sent(&self, txid: &Txid) {
+    fn tx_sent(&self, txid: Txid) {
         println!("Transaction sent: {txid}");
     }
 
-    fn tx_failed(&self, txid: &Txid) {
+    fn tx_failed(&self, txid: Txid) {
         println!("Transaction failed: {txid}");
     }
 
@@ -104,11 +104,11 @@ impl NodeMessageHandler for TraceLogger {
         tracing::info!("State change: {state}")
     }
 
-    fn tx_sent(&self, txid: &Txid) {
+    fn tx_sent(&self, txid: Txid) {
         tracing::info!("Transaction sent: {txid}")
     }
 
-    fn tx_failed(&self, txid: &Txid) {
+    fn tx_failed(&self, txid: Txid) {
         tracing::info!("Transaction failed: {txid}")
     }
 
@@ -132,8 +132,8 @@ impl NodeMessageHandler for () {
     fn warning(&self, _warning: Warning) {}
     fn state_changed(&self, _state: NodeState) {}
     fn connections_met(&self) {}
-    fn tx_sent(&self, _txid: &Txid) {}
-    fn tx_failed(&self, _txid: &Txid) {}
+    fn tx_sent(&self, _txid: Txid) {}
+    fn tx_failed(&self, _txid: Txid) {}
     fn blocks_disconnected(&self, _blocks: Vec<u32>) {}
     fn synced(&self, _tip: u32) {}
 }
