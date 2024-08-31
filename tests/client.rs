@@ -1,11 +1,13 @@
 // #![allow(unused)]
 use std::net::IpAddr;
 use std::time::Duration;
+use std::sync::Arc;
 use tokio::task;
 use tokio::time;
 
 use bdk_kyoto::builder::LightClientBuilder;
 use bdk_kyoto::TrustedPeer;
+use bdk_kyoto::logger::PrintLogger;
 use bdk_testenv::bitcoincore_rpc::RpcApi;
 use bdk_testenv::bitcoind;
 use bdk_testenv::TestEnv;
@@ -41,8 +43,6 @@ fn init_node(
     env: &TestEnv,
     wallet: &bdk_wallet::Wallet,
 ) -> anyhow::Result<(bdk_kyoto::Node, bdk_kyoto::Client<KeychainKind>)> {
-    use bdk_kyoto::logger::PrintLogger;
-    use std::sync::Arc;
     let peer = env.bitcoind.params.p2p_socket.unwrap();
     let ip: IpAddr = peer.ip().clone().into();
     let port = peer.port();
@@ -51,7 +51,6 @@ fn init_node(
     let path = tempfile::tempdir()?.path().join("kyoto-data");
     Ok(LightClientBuilder::new(&wallet)
         .peers(vec![peer])
-        .logger(Arc::new(PrintLogger::new()))
         .data_dir(path)
         .connections(1)
         .build()?)
@@ -90,7 +89,7 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
     task::spawn(async move { node.run().await });
 
     // get update
-    if let Some(update) = client.update().await {
+    if let Some(update) = client.update(Some(Arc::new(PrintLogger::new()))).await {
         let FullScanResult {
             tx_update,
             chain_update,
