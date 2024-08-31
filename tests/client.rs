@@ -1,7 +1,6 @@
 // #![allow(unused)]
 use std::net::IpAddr;
 use std::time::Duration;
-use std::sync::Arc;
 use tokio::task;
 use tokio::time;
 
@@ -87,9 +86,9 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
 
     // run node
     task::spawn(async move { node.run().await });
-
+    let logger = PrintLogger::new();
     // get update
-    if let Some(update) = client.update(Some(Arc::new(PrintLogger::new()))).await {
+    if let Some(update) = client.update(&logger).await {
         let FullScanResult {
             tx_update,
             chain_update,

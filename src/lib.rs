@@ -3,7 +3,6 @@
 
 use core::fmt;
 use std::collections::{BTreeMap, HashSet};
-use std::sync::Arc;
 
 use bdk_chain::{
     keychain_txout::KeychainTxOutIndex,
@@ -63,12 +62,11 @@ where
     /// This may take a significant portion of time during wallet recoveries or dormant wallets.
     pub async fn update(
         &mut self,
-        logger: Option<Arc<dyn NodeMessageHandler>>,
+        logger: &dyn NodeMessageHandler
     ) -> Option<FullScanResult<K>> {
-        let logger = logger.unwrap_or(Arc::new(()));
         let mut chain_changeset = BTreeMap::new();
         while let Ok(message) = self.receiver.recv().await {
-            self.log(&message, &logger);
+            self.log(&message, logger);
             match message {
                 NodeMessage::Block(IndexedBlock { height, block }) => {
                     let hash = block.header.block_hash();
@@ -115,8 +113,7 @@ where
     }
 
     // Send dialogs to an arbitrary logger
-    fn log(&self, message: &NodeMessage, logger: impl AsRef<dyn NodeMessageHandler>) {
-        let logger = logger.as_ref();
+    fn log(&self, message: &NodeMessage, logger: &dyn NodeMessageHandler) {
         match message {
             NodeMessage::Dialog(d) => logger.dialog(d.clone()),
             NodeMessage::Warning(w) => logger.warning(w.clone()),
