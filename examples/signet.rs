@@ -67,7 +67,6 @@ async fn main() -> anyhow::Result<()> {
         .build_node()
         .unwrap();
     let mut client = Client::from_index(chain.tip(), &graph.index, client).unwrap();
-    client.set_logger(Arc::new(PrintLogger::new()));
 
     // Run the node
     if !node.is_running() {
@@ -75,7 +74,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Sync and apply updates
-    if let Some(update) = client.update().await {
+    if let Some(update) = client.update(Some(Arc::new(PrintLogger::new()))).await {
         let _ = chain.apply_update(update.chain_update.unwrap())?;
         let mut indexed_tx_graph_changeset = graph.apply_update(update.tx_update);
         let index_changeset = graph

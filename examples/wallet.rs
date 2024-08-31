@@ -37,7 +37,6 @@ async fn main() -> anyhow::Result<()> {
     let (mut node, mut client) = LightClientBuilder::new(&wallet)
         .scan_after(170_000)
         .peers(peers)
-        .logger(Arc::new(TraceLogger::new()))
         .build()
         .unwrap();
 
@@ -51,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
     // Sync and apply updates. We can do this a continual loop while the "application" is running.
     // Often this loop would be on a separate "Task" in a Swift app for instance
     loop {
-        if let Some(update) = client.update().await {
+        if let Some(update) = client.update(Some(Arc::new(TraceLogger::new()))).await {
             wallet.apply_update(update)?;
             // Do something here to add more scripts?
             tracing::info!("Tx count: {}", wallet.transactions().count());

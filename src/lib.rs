@@ -12,7 +12,7 @@ use bdk_chain::{
     IndexedTxGraph,
 };
 use bdk_chain::{ConfirmationBlockTime, TxUpdate};
-use kyoto::{TxBroadcast, IndexedBlock};
+use kyoto::{IndexedBlock, TxBroadcast};
 
 use crate::logger::NodeMessageHandler;
 
@@ -22,9 +22,9 @@ pub mod logger;
 
 pub use bdk_chain::local_chain::MissingGenesisError;
 pub use kyoto::{
-    ClientError, DatabaseError, Node, NodeBuilder, NodeMessage, NodeState, Receiver,
-    ScriptBuf, SyncUpdate, Transaction, TrustedPeer, TxBroadcastPolicy, Txid, Warning,
-    MAINNET_HEADER_CP, SIGNET_HEADER_CP,
+    ClientError, DatabaseError, Node, NodeBuilder, NodeMessage, NodeState, Receiver, ScriptBuf,
+    SyncUpdate, Transaction, TrustedPeer, TxBroadcastPolicy, Txid, Warning, MAINNET_HEADER_CP,
+    SIGNET_HEADER_CP,
 };
 
 /// A compact block filter client.
@@ -38,8 +38,6 @@ pub struct Client<K> {
     chain: local_chain::LocalChain,
     // receive graph
     graph: IndexedTxGraph<ConfirmationBlockTime, KeychainTxOutIndex<K>>,
-    // messages
-    message_handler: Arc<dyn NodeMessageHandler>,
 }
 
 impl<K> Client<K>
@@ -58,21 +56,19 @@ where
             receiver,
             chain: LocalChain::from_tip(cp)?,
             graph: IndexedTxGraph::new(index.clone()),
-            message_handler: Arc::new(()),
         })
-    }
-
-    /// Add a logger to handle node messages
-    pub fn set_logger(&mut self, logger: Arc<dyn NodeMessageHandler>) {
-        self.message_handler = logger;
     }
 
     /// Return the most recent update from the node once it has synced to the network's tip.
     /// This may take a significant portion of time during wallet recoveries or dormant wallets.
-    pub async fn update(&mut self) -> Option<FullScanResult<K>> {
+    pub async fn update(
+        &mut self,
+        logger: Option<Arc<dyn NodeMessageHandler>>,
+    ) -> Option<FullScanResult<K>> {
+        let logger = logger.unwrap_or(Arc::new(()));
         let mut chain_changeset = BTreeMap::new();
         while let Ok(message) = self.receiver.recv().await {
-            self.log(&message);
+            self.log(&message, &logger);
             match message {
                 NodeMessage::Block(IndexedBlock { height, block }) => {
                     let hash = block.header.block_hash();
@@ -119,8 +115,8 @@ where
     }
 
     // Send dialogs to an arbitrary logger
-    fn log(&self, message: &NodeMessage) {
-        let logger = &self.message_handler;
+    fn log(&self, message: &NodeMessage, logger: impl AsRef<dyn NodeMessageHandler>) {
+        let logger = logger.as_ref();
         match message {
             NodeMessage::Dialog(d) => logger.dialog(d.clone()),
             NodeMessage::Warning(w) => logger.warning(w.clone()),

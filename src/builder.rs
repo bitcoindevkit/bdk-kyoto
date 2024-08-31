@@ -1,6 +1,6 @@
 //! [`bdk_kyoto::Client`] builder
 
-use std::{collections::HashSet, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
+use std::{collections::HashSet, path::PathBuf, str::FromStr, time::Duration};
 
 use bdk_wallet::{KeychainKind, Wallet};
 use kyoto::{
@@ -10,7 +10,7 @@ use kyoto::{
     BlockHash, DatabaseError, Network, Node, NodeBuilder, ScriptBuf, TrustedPeer,
 };
 
-use crate::{logger::NodeMessageHandler, Client};
+use crate::Client;
 
 const TARGET_INDEX: u32 = 20;
 const RECOMMENDED_PEERS: u8 = 2;
@@ -24,7 +24,6 @@ pub struct LightClientBuilder<'a> {
     birthday_height: Option<u32>,
     data_dir: Option<PathBuf>,
     timeout: Option<Duration>,
-    message_handler: Option<Arc<dyn NodeMessageHandler>>,
 }
 
 impl<'a> LightClientBuilder<'a> {
@@ -37,7 +36,6 @@ impl<'a> LightClientBuilder<'a> {
             birthday_height: None,
             data_dir: None,
             timeout: None,
-            message_handler: None,
         }
     }
     /// Add peers to connect to over the P2P network.
@@ -49,12 +47,6 @@ impl<'a> LightClientBuilder<'a> {
     /// Add the number of connections for the node to maintain.
     pub fn connections(mut self, num_connections: u8) -> Self {
         self.connections = Some(num_connections);
-        self
-    }
-
-    /// Handle messages from the node
-    pub fn logger(mut self, message_handler: Arc<dyn NodeMessageHandler>) -> Self {
-        self.message_handler = Some(message_handler);
         self
     }
 
@@ -169,14 +161,11 @@ impl<'a> LightClientBuilder<'a> {
             }
         }
         let (node, kyoto_client) = node_builder.add_scripts(spks).build_node()?;
-        let mut client = Client::from_index(
+        let client = Client::from_index(
             self.wallet.local_chain().tip(),
             self.wallet.spk_index(),
             kyoto_client,
         )?;
-        if let Some(logger) = self.message_handler {
-            client.set_logger(logger)
-        }
         Ok((node, client))
     }
 }
