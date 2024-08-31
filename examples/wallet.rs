@@ -1,5 +1,4 @@
 use std::net::{IpAddr, Ipv4Addr};
-use std::sync::Arc;
 
 use bdk_kyoto::builder::LightClientBuilder;
 use bdk_kyoto::logger::TraceLogger;
@@ -49,8 +48,9 @@ async fn main() -> anyhow::Result<()> {
 
     // Sync and apply updates. We can do this a continual loop while the "application" is running.
     // Often this loop would be on a separate "Task" in a Swift app for instance
+    let logger = TraceLogger::new();
     loop {
-        if let Some(update) = client.update(Some(Arc::new(TraceLogger::new()))).await {
+        if let Some(update) = client.update(&logger).await {
             wallet.apply_update(update)?;
             // Do something here to add more scripts?
             tracing::info!("Tx count: {}", wallet.transactions().count());

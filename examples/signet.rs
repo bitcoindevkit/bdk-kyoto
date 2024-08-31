@@ -2,7 +2,6 @@ use bdk_wallet::chain::Merge;
 use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
-use std::sync::Arc;
 use tokio::task;
 
 use bdk_kyoto::logger::PrintLogger;
@@ -74,7 +73,8 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Sync and apply updates
-    if let Some(update) = client.update(Some(Arc::new(PrintLogger::new()))).await {
+    let logger = PrintLogger::new();
+    if let Some(update) = client.update(&logger).await {
         let _ = chain.apply_update(update.chain_update.unwrap())?;
         let mut indexed_tx_graph_changeset = graph.apply_update(update.tx_update);
         let index_changeset = graph
