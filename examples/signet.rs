@@ -14,7 +14,7 @@ use bdk_wallet::chain::{
     IndexedTxGraph, SpkIterator,
 };
 use kyoto::chain::checkpoints::HeaderCheckpoint;
-use kyoto::node::builder::NodeBuilder;
+use kyoto::core::builder::NodeBuilder;
 
 const TARGET_INDEX: u32 = 20;
 
