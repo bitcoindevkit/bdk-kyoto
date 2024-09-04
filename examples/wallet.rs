@@ -33,7 +33,7 @@ async fn main() -> anyhow::Result<()> {
         .create_wallet_no_persist()?;
 
     // The light client builder handles the logic of inserting the SPKs
-    let (mut node, mut client) = LightClientBuilder::new(&wallet)
+    let (node, mut client) = LightClientBuilder::new(&wallet)
         .scan_after(170_000)
         .peers(peers)
         .build()

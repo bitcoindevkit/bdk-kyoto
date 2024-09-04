@@ -60,10 +60,7 @@ where
 
     /// Return the most recent update from the node once it has synced to the network's tip.
     /// This may take a significant portion of time during wallet recoveries or dormant wallets.
-    pub async fn update(
-        &mut self,
-        logger: &dyn NodeMessageHandler
-    ) -> Option<FullScanResult<K>> {
+    pub async fn update(&mut self, logger: &dyn NodeMessageHandler) -> Option<FullScanResult<K>> {
         let mut chain_changeset = BTreeMap::new();
         while let Ok(message) = self.receiver.recv().await {
             self.log(&message, logger);

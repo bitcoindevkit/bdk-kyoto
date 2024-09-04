@@ -5,8 +5,8 @@ use tokio::task;
 use tokio::time;
 
 use bdk_kyoto::builder::LightClientBuilder;
-use bdk_kyoto::TrustedPeer;
 use bdk_kyoto::logger::PrintLogger;
+use bdk_kyoto::TrustedPeer;
 use bdk_testenv::bitcoincore_rpc::RpcApi;
 use bdk_testenv::bitcoind;
 use bdk_testenv::TestEnv;
@@ -72,7 +72,7 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
     let addr = wallet.peek_address(KeychainKind::External, index).address;
 
     // build node/client
-    let (mut node, mut client) = init_node(&env, &wallet)?;
+    let (node, mut client) = init_node(&env, &wallet)?;
 
     // mine blocks
     let _hashes = env.mine_blocks(100, Some(miner.clone()))?;
@@ -112,6 +112,63 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
         );
     }
 
+    client.shutdown().await?;
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_reorg_is_handled() -> anyhow::Result<()> {
+    let env = testenv()?;
+
+    let miner = env
+        .rpc_client()
+        .get_new_address(None, None)?
+        .assume_checked();
+
+    let mut wallet = CreateParams::new(EXTERNAL_DESCRIPTOR, INTERNAL_DESCRIPTOR)
+        .network(Network::Regtest)
+        .create_wallet_no_persist()?;
+
+    let index = 2;
+    let addr = wallet.peek_address(KeychainKind::External, index).address;
+
+    // build node/client
+    let (node, mut client) = init_node(&env, &wallet)?;
+
+    // mine blocks
+    let _hashes = env.mine_blocks(100, Some(miner.clone()))?;
+    wait_for_height(&env, 101)?;
+
+    task::spawn(async move { node.run().await });
+
+    let amt = Amount::from_btc(0.21)?;
+
+    let logger = PrintLogger::new();
+    for i in 1..=2 {
+        let _ = env.send(&addr, amt)?;
+        let _ = env.mine_blocks(1, Some(miner.clone()))?;
+
+        wait_for_height(&env, 102)?;
+
+        // reorg
+        if i % 2 == 0 {
+            _ = env.reorg(3)?;
+        }
+
+        let update = client.update(&logger).await;
+        if let Some(update) = update {
+            wallet.apply_update(update).unwrap();
+        }
+
+        if i % 2 == 0 {
+            assert_eq!(wallet.balance().total(), Amount::from_sat(0));
+        } else {
+            assert_eq!(wallet.balance().total(), amt);
+        }
+    }
+
+    // FIXME: Error receiving channel has been closed
     client.shutdown().await?;
 
     Ok(())
