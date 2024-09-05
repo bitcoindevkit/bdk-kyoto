@@ -120,7 +120,7 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
 async fn update_handles_reorg() -> anyhow::Result<()> {
     let env = testenv()?;
 
-    let wallet = CreateParams::new(EXTERNAL_DESCRIPTOR, INTERNAL_DESCRIPTOR)
+    let mut wallet = CreateParams::new(EXTERNAL_DESCRIPTOR, INTERNAL_DESCRIPTOR)
         .network(Network::Regtest)
         .create_wallet_no_persist()?;
     let addr = wallet.peek_address(KeychainKind::External, 0).address;
@@ -146,24 +146,34 @@ async fn update_handles_reorg() -> anyhow::Result<()> {
 
     // get update
     let logger = PrintLogger::new();
-    let res = client.update(&logger).await.expect("should have update");
-    let (anchor, anchor_txid) = res.tx_update.anchors.first().unwrap().clone();
+    let update = client.update(&logger).await.expect("should have update");
+    let (anchor, anchor_txid) = update.tx_update.anchors.first().unwrap().clone();
     assert_eq!(anchor.block_id.hash, blockhash);
     assert_eq!(anchor_txid, txid);
+    let _ = wallet.apply_update(update)?;
+    assert_eq!(wallet.balance().total(), amt);
 
     // reorg
-    let hashes = env.reorg(1)?; // 102
-    let new_blockhash = hashes[0];
-    _ = env.mine_blocks(1, Some(miner))?; // 103
+    _ = env.reorg_empty_blocks(1)?; // 102
+    _ = env.mine_empty_block()?; // 103
     wait_for_height(&env, 103)?;
+    let update = client.update(&logger).await.expect("should have update");
+    wallet.apply_update(update)?;
+    assert_eq!(wallet.balance().total(), Amount::ZERO);
 
-    // expect tx to confirm at same height but different blockhash
-    let res = client.update(&logger).await.expect("should have update");
-    let (anchor, anchor_txid) = res.tx_update.anchors.first().unwrap().clone();
+    let hashes = env.mine_blocks(1, Some(miner))?; // 104
+    let new_blockhash = hashes[0];
+    wait_for_height(&env, 104)?;
+
+    // expect tx to confirm in new block
+    let update = client.update(&logger).await.expect("should have update");
+    let (anchor, anchor_txid) = update.tx_update.anchors.first().unwrap().clone();
     assert_eq!(anchor_txid, txid);
-    assert_eq!(anchor.block_id.height, 102);
+    assert_eq!(anchor.block_id.height, 104);
     assert_ne!(anchor.block_id.hash, blockhash);
     assert_eq!(anchor.block_id.hash, new_blockhash);
+    wallet.apply_update(update)?;
+    assert_eq!(wallet.balance().total(), amt);
 
     client.shutdown().await?;
 
