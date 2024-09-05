@@ -5,8 +5,8 @@ use tokio::task;
 use tokio::time;
 
 use bdk_kyoto::builder::LightClientBuilder;
-use bdk_kyoto::TrustedPeer;
 use bdk_kyoto::logger::PrintLogger;
+use bdk_kyoto::TrustedPeer;
 use bdk_testenv::bitcoincore_rpc::RpcApi;
 use bdk_testenv::bitcoind;
 use bdk_testenv::TestEnv;
@@ -88,29 +88,28 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
     task::spawn(async move { node.run().await });
     let logger = PrintLogger::new();
     // get update
-    if let Some(update) = client.update(&logger).await {
-        let FullScanResult {
-            tx_update,
-            chain_update,
-            last_active_indices,
-        } = update;
-        // graph tx and anchor
-        let tx = tx_update.txs.iter().next().unwrap();
-        let (anchor, anchor_txid) = tx_update.anchors.first().unwrap().clone();
-        assert_eq!(anchor_txid, txid);
-        assert_eq!(anchor.block_id.height, 102);
-        assert_eq!(anchor.block_id.hash, hashes[0]);
-        let txout = tx.output.iter().find(|txout| txout.value == amt).unwrap();
-        assert_eq!(txout.script_pubkey, addr.script_pubkey());
-        // chain
-        let update_cp = chain_update.unwrap();
-        assert_eq!(update_cp.height(), 102);
-        // keychain
-        assert_eq!(
-            last_active_indices,
-            [(KeychainKind::External, index)].into()
-        );
-    }
+    let res = client.update(&logger).await.expect("should have update");
+    let FullScanResult {
+        tx_update,
+        chain_update,
+        last_active_indices,
+    } = res;
+    // graph tx and anchor
+    let tx = tx_update.txs.iter().next().unwrap();
+    let (anchor, anchor_txid) = tx_update.anchors.first().unwrap().clone();
+    assert_eq!(anchor_txid, txid);
+    assert_eq!(anchor.block_id.height, 102);
+    assert_eq!(anchor.block_id.hash, hashes[0]);
+    let txout = tx.output.iter().find(|txout| txout.value == amt).unwrap();
+    assert_eq!(txout.script_pubkey, addr.script_pubkey());
+    // chain
+    let update_cp = chain_update.unwrap();
+    assert_eq!(update_cp.height(), 102);
+    // keychain
+    assert_eq!(
+        last_active_indices,
+        [(KeychainKind::External, index)].into()
+    );
 
     client.shutdown().await?;
 
