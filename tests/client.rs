@@ -115,3 +115,57 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn update_handles_reorg() -> anyhow::Result<()> {
+    let env = testenv()?;
+
+    let wallet = CreateParams::new(EXTERNAL_DESCRIPTOR, INTERNAL_DESCRIPTOR)
+        .network(Network::Regtest)
+        .create_wallet_no_persist()?;
+    let addr = wallet.peek_address(KeychainKind::External, 0).address;
+
+    let (mut node, mut client) = init_node(&env, &wallet)?;
+
+    // mine blocks
+    let miner = env
+        .rpc_client()
+        .get_new_address(None, None)?
+        .assume_checked();
+    let _hashes = env.mine_blocks(100, Some(miner.clone()))?;
+    wait_for_height(&env, 101)?;
+
+    // send tx
+    let amt = Amount::from_btc(0.21)?;
+    let txid = env.send(&addr, amt)?;
+    let hashes = env.mine_blocks(1, Some(miner.clone()))?;
+    let blockhash = hashes[0];
+    wait_for_height(&env, 102)?;
+
+    task::spawn(async move { node.run().await });
+
+    // get update
+    let logger = PrintLogger::new();
+    let res = client.update(&logger).await.expect("should have update");
+    let (anchor, anchor_txid) = res.tx_update.anchors.first().unwrap().clone();
+    assert_eq!(anchor.block_id.hash, blockhash);
+    assert_eq!(anchor_txid, txid);
+
+    // reorg
+    let hashes = env.reorg(1)?; // 102
+    let new_blockhash = hashes[0];
+    _ = env.mine_blocks(1, Some(miner))?; // 103
+    wait_for_height(&env, 103)?;
+
+    // expect tx to confirm at same height but different blockhash
+    let res = client.update(&logger).await.expect("should have update");
+    let (anchor, anchor_txid) = res.tx_update.anchors.first().unwrap().clone();
+    assert_eq!(anchor_txid, txid);
+    assert_eq!(anchor.block_id.height, 102);
+    assert_ne!(anchor.block_id.hash, blockhash);
+    assert_eq!(anchor.block_id.hash, new_blockhash);
+
+    client.shutdown().await?;
+
+    Ok(())
+}
