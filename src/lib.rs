@@ -1,4 +1,129 @@
-//! bdk_kyoto
+//! BDK-Kyoto is an extension of [Kyoto](https://github.com/rustaceanrob/kyoto), a client-side implementation of BIP157/BIP158.
+//! These proposals define a way for users to fetch transactions privately, using _compact block filters_.
+//! You may want to read the specification [here](https://github.com/bitcoin/bips/blob/master/bip-0158.mediawiki).
+//!
+//! Kyoto runs as a psuedo-node, sending messages over the Bitcoin peer-to-peer layer, finding new peers to connect to, and managing a
+//! light-weight database of Bitcoin block headers. As such, developing a wallet application using this crate is distinct from a typical
+//! client/server relationship. Esplora and Electrum offer _proactive_ APIs, in that the servers will respond to events as they are requested.
+//! In the case of running a node as a background process, the developer experience is far more _reactive_, in that the node may emit any number of events,
+//! and the application may respond to them.
+//!
+//! BDK-Kyoto curates these events into structures that are easily handled by BDK APIs, making integration of compact block filters easily understood.
+//! Developers are free to use `bdk_wallet`, or only primatives found in `bdk_core` and `bdk_chain`.
+//!
+//! ## Examples
+//!
+//! If you have an existing project that leverages `bdk_wallet`, building the compact block filter _node_ and _client_ is simple.
+//! You may construct and configure a node to integrate with your wallet by using a [`LightClientBuilder`](crate).
+//!
+//! ```no_run
+//! # const RECEIVE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/0/*)";
+//! # const CHANGE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/1/*)";
+//! use bdk_wallet::Wallet;
+//! use bdk_wallet::bitcoin::Network;
+//! use bdk_kyoto::builder::LightClientBuilder;
+//! use bdk_kyoto::logger::PrintLogger;
+//! 
+//! #[tokio::main]
+//! async fn main() -> anyhow::Result<()> {
+//!     let mut wallet = Wallet::create(RECEIVE, CHANGE)
+//!         .network(Network::Signet)
+//!         .create_wallet_no_persist()?;
+//! 
+//!     let (mut node, mut client) = LightClientBuilder::new(&wallet).build()?;
+//! 
+//!     tokio::task::spawn(async move { node.run().await });
+//! 
+//!     let logger = PrintLogger::new();
+//!     loop {
+//!         if let Some(update) = client.update(&logger).await {
+//!             wallet.apply_update(update)?;
+//!             return Ok(());
+//!         }
+//!     }
+//! }
+//! ```
+//! 
+//! Custom wallet implementations may still take advantage of BDK-Kyoto, however building the [`Client`] will involve configuring Kyoto directly.
+//! 
+//! ```no_run
+//! # const RECEIVE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/0/*)";
+//! # const CHANGE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/1/*)";
+//! # use std::collections::HashSet;
+//! # use std::net::{IpAddr, Ipv4Addr};
+//! # use std::str::FromStr;
+//! # use bdk_wallet::bitcoin::{
+//! #    constants::genesis_block, secp256k1::Secp256k1, Address, BlockHash, Network, ScriptBuf,
+//! # };
+//! # use bdk_wallet::chain::{
+//! #    keychain_txout::KeychainTxOutIndex, local_chain::LocalChain, miniscript::Descriptor, FullTxOut,
+//! #    IndexedTxGraph, SpkIterator, Merge,
+//! # };
+//! use bdk_kyoto::{Client, TrustedPeer, NodeBuilder, HeaderCheckpoint};
+//! use bdk_kyoto::logger::PrintLogger;
+//!
+//! const TARGET_INDEX: u32 = 20;
+//!
+//! #[tokio::main]
+//! async fn main() -> anyhow::Result<()> {
+//!     let secp = Secp256k1::new();
+//!     let (descriptor, _) = Descriptor::parse_descriptor(&secp, &RECEIVE)?;
+//!     let (change_descriptor, _) = Descriptor::parse_descriptor(&secp, &CHANGE)?;
+//!
+//!     let g = genesis_block(Network::Signet).block_hash();
+//!     let (mut chain, _) = LocalChain::from_genesis_hash(g);
+//!
+//!     let mut graph = IndexedTxGraph::new({
+//!         let mut index = KeychainTxOutIndex::default();
+//!         let _ = index.insert_descriptor(0usize, descriptor);
+//!         let _ = index.insert_descriptor(1, change_descriptor);
+//!         index
+//!     });
+//!
+//!     let mut spks_to_watch: HashSet<ScriptBuf> = HashSet::new();
+//!     for (_k, desc) in graph.index.keychains() {
+//!         for (_i, spk) in SpkIterator::new_with_range(desc, 0..TARGET_INDEX) {
+//!             spks_to_watch.insert(spk);
+//!         }
+//!     }
+//!
+//!     let peer = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+//!     let trusted = TrustedPeer::from_ip(peer);
+//!     let peers = vec![trusted];
+//!
+//!     let builder = NodeBuilder::new(Network::Signet);
+//!     let (mut node, kyoto_client) = builder
+//!         .add_peers(peers)
+//!         .add_scripts(spks_to_watch)
+//!         .anchor_checkpoint(HeaderCheckpoint::new(
+//!             170_000,
+//!             BlockHash::from_str(
+//!                 "00000041c812a89f084f633e4cf47e819a2f6b1c0a15162355a930410522c99d",
+//!             ).unwrap(),
+//!         ))
+//!         .num_required_peers(2)
+//!         .build_node()
+//!         .unwrap();
+//!
+//!     let mut client = Client::from_index(chain.tip(), &graph.index, kyoto_client).unwrap();
+//! 
+//!     tokio::task::spawn(async move { node.run().await });
+//! 
+//!     let logger = PrintLogger::new();
+//!     if let Some(update) = client.update(&logger).await {
+//!         let _ = chain.apply_update(update.chain_update.unwrap())?;
+//!         let mut indexed_tx_graph_changeset = graph.apply_update(update.tx_update);
+//!         let index_changeset = graph
+//!             .index
+//!             .reveal_to_target_multi(&update.last_active_indices);
+//!         indexed_tx_graph_changeset.merge(index_changeset.into());
+//!         let _ = graph.apply_changeset(indexed_tx_graph_changeset);
+//!     }
+//!     client.shutdown().await?;
+//!     Ok(())
+//!}
+//! ```
+
 #![warn(missing_docs)]
 
 use core::fmt;
@@ -21,7 +146,7 @@ pub mod logger;
 
 pub use bdk_chain::local_chain::MissingGenesisError;
 pub use kyoto::{
-    ClientError, DatabaseError, Node, NodeBuilder, NodeMessage, NodeState, Receiver, ScriptBuf,
+    ClientError, DatabaseError, Node, NodeBuilder, NodeMessage, NodeState, HeaderCheckpoint, Receiver, ScriptBuf,
     SyncUpdate, Transaction, TrustedPeer, TxBroadcastPolicy, Txid, Warning, MAINNET_HEADER_CP,
     SIGNET_HEADER_CP,
 };
@@ -60,10 +185,7 @@ where
 
     /// Return the most recent update from the node once it has synced to the network's tip.
     /// This may take a significant portion of time during wallet recoveries or dormant wallets.
-    pub async fn update(
-        &mut self,
-        logger: &dyn NodeMessageHandler
-    ) -> Option<FullScanResult<K>> {
+    pub async fn update(&mut self, logger: &dyn NodeMessageHandler) -> Option<FullScanResult<K>> {
         let mut chain_changeset = BTreeMap::new();
         while let Ok(message) = self.receiver.recv().await {
             self.log(&message, logger);

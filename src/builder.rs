@@ -1,4 +1,4 @@
-//! [`bdk_kyoto::Client`] builder
+//! [`Client`] builder
 
 use std::{collections::HashSet, path::PathBuf, str::FromStr, time::Duration};
 
