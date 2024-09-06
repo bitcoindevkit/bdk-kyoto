@@ -23,17 +23,17 @@
 //! use bdk_wallet::bitcoin::Network;
 //! use bdk_kyoto::builder::LightClientBuilder;
 //! use bdk_kyoto::logger::PrintLogger;
-//! 
+//!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {
 //!     let mut wallet = Wallet::create(RECEIVE, CHANGE)
 //!         .network(Network::Signet)
 //!         .create_wallet_no_persist()?;
-//! 
+//!
 //!     let (mut node, mut client) = LightClientBuilder::new(&wallet).build()?;
-//! 
+//!
 //!     tokio::task::spawn(async move { node.run().await });
-//! 
+//!
 //!     let logger = PrintLogger::new();
 //!     loop {
 //!         if let Some(update) = client.update(&logger).await {
@@ -43,9 +43,9 @@
 //!     }
 //! }
 //! ```
-//! 
+//!
 //! Custom wallet implementations may still take advantage of BDK-Kyoto, however building the [`Client`] will involve configuring Kyoto directly.
-//! 
+//!
 //! ```no_run
 //! # const RECEIVE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/0/*)";
 //! # const CHANGE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/1/*)";
@@ -106,9 +106,9 @@
 //!         .unwrap();
 //!
 //!     let mut client = Client::from_index(chain.tip(), &graph.index, kyoto_client).unwrap();
-//! 
+//!
 //!     tokio::task::spawn(async move { node.run().await });
-//! 
+//!
 //!     let logger = PrintLogger::new();
 //!     if let Some(update) = client.update(&logger).await {
 //!         let _ = chain.apply_update(update.chain_update.unwrap())?;
@@ -146,9 +146,9 @@ pub mod logger;
 
 pub use bdk_chain::local_chain::MissingGenesisError;
 pub use kyoto::{
-    ClientError, DatabaseError, Node, NodeBuilder, NodeMessage, NodeState, HeaderCheckpoint, Receiver, ScriptBuf,
-    SyncUpdate, Transaction, TrustedPeer, TxBroadcastPolicy, Txid, Warning, MAINNET_HEADER_CP,
-    SIGNET_HEADER_CP,
+    ClientError, DatabaseError, HeaderCheckpoint, Node, NodeBuilder, NodeMessage, NodeState,
+    Receiver, ScriptBuf, SyncUpdate, Transaction, TrustedPeer, TxBroadcastPolicy, Txid, Warning,
+    MAINNET_HEADER_CP, SIGNET_HEADER_CP,
 };
 
 /// A compact block filter client.

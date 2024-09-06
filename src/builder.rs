@@ -1,6 +1,9 @@
 //! Construct a [`Node`] and [`Client`] by using a reference to a [`Wallet`].
-//! 
+//!
 //! ## Details
+//!
+//! The node has a number of configurations. Notably, the height of in the blockchain to start a wallet recovery
+//! and the nodes on the peer-to-peer network are both configurable.
 //! 
 //! ```no_run
 //! # const RECEIVE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/0/*)";
@@ -13,20 +16,20 @@
 //! use bdk_kyoto::TrustedPeer;
 //! use bdk_kyoto::builder::LightClientBuilder;
 //! use bdk_kyoto::logger::PrintLogger;
-//! 
+//!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {
 //!     // Add specific peers to connect to.
 //!     let peer = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
 //!     let trusted = TrustedPeer::from_ip(peer);
 //!     let peers = vec![trusted];
-//! 
+//!
 //!     let db_path = ".".parse::<PathBuf>()?;
-//! 
+//!
 //!     let mut wallet = Wallet::create(RECEIVE, CHANGE)
 //!         .network(Network::Signet)
 //!         .create_wallet_no_persist()?;
-//! 
+//!
 //!     let (mut node, mut client) = LightClientBuilder::new(&wallet)
 //!         // When recovering a user's wallet, specify a height to start at
 //!         .scan_after(200_000)
