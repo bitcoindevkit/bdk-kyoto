@@ -1,9 +1,9 @@
 //! Handle messages from a node.
-//! 
+//!
 //! # Examples
-//! 
+//!
 //! For quick iteration and debugging, the [`PrintLogger`] responds to node events by simply printing the display to the console.
-//! 
+//!
 //! ```rust
 //! use bdk_kyoto::logger::{PrintLogger, NodeMessageHandler};
 //! use bdk_kyoto::Warning;
@@ -12,9 +12,9 @@
 //! logger.dialog("The node is running".into());
 //! logger.warning(Warning::PeerTimedOut);
 //! ```
-//! 
+//!
 //! For a more descriptive console log, the `tracing` feature may be used.
-//! 
+//!
 //! ```rust
 //! use bdk_kyoto::logger::{TraceLogger, NodeMessageHandler};
 //! use bdk_kyoto::Warning;
@@ -23,7 +23,7 @@
 //! logger.dialog("The node is running".into());
 //! logger.warning(Warning::PeerTimedOut);
 //! ```
-//! 
+//!
 //! For production applications, a custom implementation of [`NodeMessageHandler`] should be implemented.
 //! A good applciation logger should implement user interface behavior and potentially save information to a file.
 
