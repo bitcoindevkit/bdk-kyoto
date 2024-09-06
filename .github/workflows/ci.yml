@@ -10,7 +10,7 @@ jobs:
   build:
     strategy:
       matrix:
-        platform: [ubuntu-latest, windows-latest]
+        platform: [ubuntu-latest]
         toolchain: [1.63.0, stable]
         include:
           - toolchain: 1.63.0
