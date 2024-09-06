@@ -72,7 +72,7 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
     let addr = wallet.peek_address(KeychainKind::External, index).address;
 
     // build node/client
-    let (mut node, mut client) = init_node(&env, &wallet)?;
+    let (node, mut client) = init_node(&env, &wallet)?;
 
     // mine blocks
     let _hashes = env.mine_blocks(100, Some(miner.clone()))?;
@@ -125,7 +125,7 @@ async fn update_handles_reorg() -> anyhow::Result<()> {
         .create_wallet_no_persist()?;
     let addr = wallet.peek_address(KeychainKind::External, 0).address;
 
-    let (mut node, mut client) = init_node(&env, &wallet)?;
+    let (node, mut client) = init_node(&env, &wallet)?;
 
     // mine blocks
     let miner = env

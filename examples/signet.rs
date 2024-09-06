@@ -53,7 +53,7 @@ async fn main() -> anyhow::Result<()> {
     ];
 
     let builder = NodeBuilder::new(Network::Signet);
-    let (mut node, client) = builder
+    let (node, client) = builder
         .add_peers(peers.into_iter().map(|ip| (ip, None).into()).collect())
         .add_scripts(spks_to_watch)
         .anchor_checkpoint(HeaderCheckpoint::new(
