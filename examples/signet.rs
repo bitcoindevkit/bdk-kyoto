@@ -26,8 +26,8 @@ async fn main() -> anyhow::Result<()> {
 
     let desc = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/0/*)";
     let change_desc = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/1/*)";
-    let (descriptor, _) = Descriptor::parse_descriptor(&secp, &desc)?;
-    let (change_descriptor, _) = Descriptor::parse_descriptor(&secp, &change_desc)?;
+    let (descriptor, _) = Descriptor::parse_descriptor(&secp, desc)?;
+    let (change_descriptor, _) = Descriptor::parse_descriptor(&secp, change_desc)?;
 
     let g = genesis_block(Network::Signet).block_hash();
     let (mut chain, _) = LocalChain::from_genesis_hash(g);
@@ -81,7 +81,7 @@ async fn main() -> anyhow::Result<()> {
             .index
             .reveal_to_target_multi(&update.last_active_indices);
         indexed_tx_graph_changeset.merge(index_changeset.into());
-        let _ = graph.apply_changeset(indexed_tx_graph_changeset);
+        graph.apply_changeset(indexed_tx_graph_changeset);
     }
 
     // Shutdown

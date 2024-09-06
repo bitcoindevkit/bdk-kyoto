@@ -1,0 +1,39 @@
+name: Build & Test
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        platform: [ubuntu-latest, windows-latest]
+        toolchain: [1.63.0, stable]
+        include:
+          - toolchain: 1.63.0
+            msrv: true
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Update Toolchain
+        run: |
+          rustup default ${{ matrix.toolchain }}
+          rustup component add --toolchain ${{ matrix.toolchain }} rustfmt
+          rustup component add --toolchain ${{ matrix.toolchain }} clippy
+          rustup update ${{ matrix.toolchain }}
+      - name: Pin dependencies
+        if: matrix.msrv
+        run: cargo update -p allocator-api2 --precise "0.2.9" --verbose
+      - name: Lint all targets
+        run: cargo clippy --all-targets
+      - name: Format
+        run: cargo fmt -- --check
+      - name: Build with defeault features
+        run: cargo build --verbose
+      - name: Check release build on Rust ${{ matrix.toolchain }}
+        run: cargo check --release --verbose --color always
+      - name: Test
+        run: cargo test --verbose

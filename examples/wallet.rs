@@ -20,7 +20,7 @@ async fn main() -> anyhow::Result<()> {
     let change_desc = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/1/*)";
 
     let peers = PEERS
-        .into_iter()
+        .iter()
         .map(|ip| {
             let mut peer = TrustedPeer::from_ip(*ip);
             peer.set_services(ServiceFlags::P2P_V2);
