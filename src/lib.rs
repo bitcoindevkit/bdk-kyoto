@@ -9,7 +9,7 @@
 //! and the application may respond to them.
 //!
 //! BDK-Kyoto curates these events into structures that are easily handled by BDK APIs, making integration of compact block filters easily understood.
-//! Developers are free to use `bdk_wallet`, or only primatives found in `bdk_core` and `bdk_chain`.
+//! Developers are free to use [`bdk_wallet`], or only primatives found in [`bdk_core`](https://docs.rs/bdk_core/latest/bdk_core/) and [`bdk_chain`].
 //!
 //! ## Examples
 //!
