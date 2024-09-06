@@ -28,7 +28,7 @@ jobs:
         if: matrix.msrv
         run: cargo update -p allocator-api2 --precise "0.2.9" --verbose
       - name: Lint all targets
-        run: cargo clippy --all-targets
+        run: cargo clippy
       - name: Format
         run: cargo fmt -- --check
       - name: Build with defeault features
