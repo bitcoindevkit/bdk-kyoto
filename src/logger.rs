@@ -25,7 +25,7 @@
 //! ```
 //!
 //! For production applications, a custom implementation of [`NodeMessageHandler`] should be implemented.
-//! A good applciation logger should implement user interface behavior and potentially save information to a file.
+//! An example of a good applciation logger should implement user interface behavior and potentially save information to a file.
 
 use std::fmt::Debug;
 

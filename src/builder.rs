@@ -1,4 +1,46 @@
-//! [`Client`] builder
+//! Construct a [`Node`] and [`Client`] by using a reference to a [`Wallet`].
+//! 
+//! ## Details
+//! 
+//! ```no_run
+//! # const RECEIVE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/0/*)";
+//! # const CHANGE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/1/*)";
+//! use std::net::{IpAddr, Ipv4Addr};
+//! use std::path::PathBuf;
+//! use std::time::Duration;
+//! use bdk_wallet::Wallet;
+//! use bdk_wallet::bitcoin::Network;
+//! use bdk_kyoto::TrustedPeer;
+//! use bdk_kyoto::builder::LightClientBuilder;
+//! use bdk_kyoto::logger::PrintLogger;
+//! 
+//! #[tokio::main]
+//! async fn main() -> anyhow::Result<()> {
+//!     // Add specific peers to connect to.
+//!     let peer = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+//!     let trusted = TrustedPeer::from_ip(peer);
+//!     let peers = vec![trusted];
+//! 
+//!     let db_path = ".".parse::<PathBuf>()?;
+//! 
+//!     let mut wallet = Wallet::create(RECEIVE, CHANGE)
+//!         .network(Network::Signet)
+//!         .create_wallet_no_persist()?;
+//! 
+//!     let (mut node, mut client) = LightClientBuilder::new(&wallet)
+//!         // When recovering a user's wallet, specify a height to start at
+//!         .scan_after(200_000)
+//!         // A node may handle mutliple connections
+//!         .connections(2)
+//!         // Choose where to store node data
+//!         .data_dir(db_path)
+//!         // How long peers have to respond messages
+//!         .timeout_duration(Duration::from_secs(10))
+//!         .peers(peers)
+//!         .build()?;
+//!     Ok(())
+//! }
+//! ```
 
 use std::{collections::HashSet, path::PathBuf, str::FromStr, time::Duration};
 
