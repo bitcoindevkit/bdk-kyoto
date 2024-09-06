@@ -31,9 +31,9 @@ fn testenv() -> anyhow::Result<TestEnv> {
     })
 }
 
-fn wait_for_height(env: &TestEnv, height: u32) -> anyhow::Result<()> {
+async fn wait_for_height(env: &TestEnv, height: u32) -> anyhow::Result<()> {
     while env.rpc_client().get_block_count()? < height as u64 {
-        let _ = time::sleep(Duration::from_millis(256));
+        time::sleep(Duration::from_millis(256)).await;
     }
     Ok(())
 }
@@ -43,12 +43,12 @@ fn init_node(
     wallet: &bdk_wallet::Wallet,
 ) -> anyhow::Result<(bdk_kyoto::Node, bdk_kyoto::Client<KeychainKind>)> {
     let peer = env.bitcoind.params.p2p_socket.unwrap();
-    let ip: IpAddr = peer.ip().clone().into();
+    let ip: IpAddr = (*peer.ip()).into();
     let port = peer.port();
     let mut peer = TrustedPeer::from_ip(ip);
     peer.port = Some(port);
     let path = tempfile::tempdir()?.path().join("kyoto-data");
-    Ok(LightClientBuilder::new(&wallet)
+    Ok(LightClientBuilder::new(wallet)
         .peers(vec![peer])
         .data_dir(path)
         .connections(1)
@@ -76,13 +76,13 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
 
     // mine blocks
     let _hashes = env.mine_blocks(100, Some(miner.clone()))?;
-    wait_for_height(&env, 101)?;
+    wait_for_height(&env, 101).await?;
 
     // send tx
     let amt = Amount::from_btc(0.21)?;
     let txid = env.send(&addr, amt)?;
     let hashes = env.mine_blocks(1, Some(miner))?;
-    wait_for_height(&env, 102)?;
+    wait_for_height(&env, 102).await?;
 
     // run node
     task::spawn(async move { node.run().await });
@@ -95,8 +95,8 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
         last_active_indices,
     } = res;
     // graph tx and anchor
-    let tx = tx_update.txs.iter().next().unwrap();
-    let (anchor, anchor_txid) = tx_update.anchors.first().unwrap().clone();
+    let tx = tx_update.txs.first().unwrap();
+    let (anchor, anchor_txid) = *tx_update.anchors.first().unwrap();
     assert_eq!(anchor_txid, txid);
     assert_eq!(anchor.block_id.height, 102);
     assert_eq!(anchor.block_id.hash, hashes[0]);
@@ -133,21 +133,21 @@ async fn update_handles_reorg() -> anyhow::Result<()> {
         .get_new_address(None, None)?
         .assume_checked();
     let _hashes = env.mine_blocks(100, Some(miner.clone()))?;
-    wait_for_height(&env, 101)?;
+    wait_for_height(&env, 101).await?;
 
     // send tx
     let amt = Amount::from_btc(0.21)?;
     let txid = env.send(&addr, amt)?;
     let hashes = env.mine_blocks(1, Some(miner.clone()))?;
     let blockhash = hashes[0];
-    wait_for_height(&env, 102)?;
+    wait_for_height(&env, 102).await?;
 
     task::spawn(async move { node.run().await });
 
     // get update
     let logger = PrintLogger::new();
     let res = client.update(&logger).await.expect("should have update");
-    let (anchor, anchor_txid) = res.tx_update.anchors.first().unwrap().clone();
+    let (anchor, anchor_txid) = *res.tx_update.anchors.first().unwrap();
     assert_eq!(anchor.block_id.hash, blockhash);
     assert_eq!(anchor_txid, txid);
 
@@ -155,11 +155,11 @@ async fn update_handles_reorg() -> anyhow::Result<()> {
     let hashes = env.reorg(1)?; // 102
     let new_blockhash = hashes[0];
     _ = env.mine_blocks(1, Some(miner))?; // 103
-    wait_for_height(&env, 103)?;
+    wait_for_height(&env, 103).await?;
 
     // expect tx to confirm at same height but different blockhash
     let res = client.update(&logger).await.expect("should have update");
-    let (anchor, anchor_txid) = res.tx_update.anchors.first().unwrap().clone();
+    let (anchor, anchor_txid) = *res.tx_update.anchors.first().unwrap();
     assert_eq!(anchor_txid, txid);
     assert_eq!(anchor.block_id.height, 102);
     assert_ne!(anchor.block_id.hash, blockhash);

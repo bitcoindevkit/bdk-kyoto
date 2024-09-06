@@ -3,6 +3,7 @@ debug/
 target/
 Cargo.lock
 .DS_Store
+.vscode/
 
 # database
 data/
