@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 bdk_chain = { version = "0.18.0" }
-kyoto-cbf = { git = "https://github.com/rustaceanrob/kyoto", rev = "71e3c57063549a6b63f403a5f7f8428f806f3deb" }
+kyoto-cbf = { git = "https://github.com/rustaceanrob/kyoto", rev = "d9ab1ce3fdfee863f152fe145596b7f93171b5aa" }
 tracing = { version = "0.1", optional = true }
 tracing-subscriber = { version = "0.3", optional = true }
 
