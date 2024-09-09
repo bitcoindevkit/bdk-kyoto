@@ -264,14 +264,10 @@ where
     }
 
     /// Broadcast a [`Transaction`] with a [`TxBroadcastPolicy`] strategy.
-    pub async fn broadcast(
-        &self,
-        tx: &Transaction,
-        policy: TxBroadcastPolicy,
-    ) -> Result<(), Error> {
+    pub async fn broadcast(&self, tx: Transaction, policy: TxBroadcastPolicy) -> Result<(), Error> {
         self.sender
             .broadcast_tx(TxBroadcast {
-                tx: tx.clone(),
+                tx,
                 broadcast_policy: policy,
             })
             .await
