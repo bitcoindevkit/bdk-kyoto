@@ -127,7 +127,7 @@
 #![warn(missing_docs)]
 
 use core::fmt;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 
 use bdk_chain::{
     keychain_txout::KeychainTxOutIndex,
@@ -279,8 +279,8 @@ where
     }
 
     /// Add more scripts to the node. Could this just check a SPK index?
-    pub async fn add_scripts(&self, scripts: HashSet<ScriptBuf>) -> Result<(), Error> {
-        self.sender.add_scripts(scripts).await.map_err(Error::from)
+    pub async fn add_script(&self, script: impl Into<ScriptBuf>) -> Result<(), Error> {
+        self.sender.add_script(script).await.map_err(Error::from)
     }
 
     /// Shutdown the node.
