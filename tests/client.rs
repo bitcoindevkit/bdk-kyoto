@@ -96,7 +96,7 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
     } = res;
     // graph tx and anchor
     let tx = tx_update.txs.first().unwrap();
-    let (anchor, anchor_txid) = *tx_update.anchors.first().unwrap();
+    let (anchor, anchor_txid) = *tx_update.anchors.iter().next().unwrap();
     assert_eq!(anchor_txid, txid);
     assert_eq!(anchor.block_id.height, 102);
     assert_eq!(anchor.block_id.hash, hashes[0]);
@@ -147,7 +147,7 @@ async fn update_handles_reorg() -> anyhow::Result<()> {
     // get update
     let logger = PrintLogger::new();
     let res = client.update(&logger).await.expect("should have update");
-    let (anchor, anchor_txid) = *res.tx_update.anchors.first().unwrap();
+    let (anchor, anchor_txid) = *res.tx_update.anchors.iter().next().unwrap();
     assert_eq!(anchor.block_id.hash, blockhash);
     assert_eq!(anchor_txid, txid);
 
@@ -159,7 +159,7 @@ async fn update_handles_reorg() -> anyhow::Result<()> {
 
     // expect tx to confirm at same height but different blockhash
     let res = client.update(&logger).await.expect("should have update");
-    let (anchor, anchor_txid) = *res.tx_update.anchors.first().unwrap();
+    let (anchor, anchor_txid) = *res.tx_update.anchors.iter().next().unwrap();
     assert_eq!(anchor_txid, txid);
     assert_eq!(anchor.block_id.height, 102);
     assert_ne!(anchor.block_id.hash, blockhash);
