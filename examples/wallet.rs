@@ -30,12 +30,14 @@ async fn main() -> anyhow::Result<()> {
 
     let mut wallet = Wallet::create(desc, change_desc)
         .network(Network::Signet)
+        .lookahead(30)
         .create_wallet_no_persist()?;
 
     // The light client builder handles the logic of inserting the SPKs
     let (node, mut client) = LightClientBuilder::new(&wallet)
         .scan_after(170_000)
         .peers(peers)
+        .use_lookahead_scripts()
         .build()
         .unwrap();
 
