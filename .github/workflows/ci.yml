@@ -8,29 +8,34 @@ on:
 
 jobs:
   build:
+    runs-on: ubuntu-latest
     strategy:
       matrix:
-        platform: [ubuntu-latest]
-        toolchain: [stable]
-        include:
+        rust:
+          - toolchain: stable
           - toolchain: 1.63.0
-            msrv: true
-    runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v3
-      - name: Update Toolchain
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@v1
+        with:
+            toolchain: ${{ matrix.rust.toolchain }}
+            components: clippy, rustfmt
+      - name: Pin dependencies for MSRV
+        if: matrix.rust.toolchain == '1.63.0'
         run: |
-          rustup default ${{ matrix.toolchain }}
-          rustup component add --toolchain ${{ matrix.toolchain }} rustfmt
-          rustup component add --toolchain ${{ matrix.toolchain }} clippy
-          rustup update ${{ matrix.toolchain }}
+          cargo update -p zstd-sys --precise "2.0.8+zstd.1.5.5"
+          cargo update -p time --precise "0.3.20"
+          cargo update -p home --precise "0.5.5"
+          cargo update -p tokio --precise "1.37.0"
       - name: Lint all targets
-        run: cargo clippy
+        run: cargo clippy --all-targets
       - name: Format
         run: cargo fmt -- --check
-      - name: Build with defeault features
+      - name: Build with default features
         run: cargo build --verbose
-      - name: Check release build on Rust ${{ matrix.toolchain }}
+      - name: Check release build on Rust ${{ matrix.rust.toolchain }}
         run: cargo check --release --verbose --color always
       - name: Test
         run: cargo test --verbose
