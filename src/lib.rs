@@ -136,7 +136,7 @@ use bdk_chain::{
     IndexedTxGraph,
 };
 use bdk_chain::{ConfirmationBlockTime, TxUpdate};
-use kyoto::{IndexedBlock, TxBroadcast};
+use kyoto::{IndexedBlock, SyncUpdate, TxBroadcast};
 
 use crate::logger::NodeMessageHandler;
 
@@ -147,7 +147,7 @@ pub mod logger;
 pub use bdk_chain::local_chain::MissingGenesisError;
 pub use kyoto::{
     ClientError, DatabaseError, HeaderCheckpoint, Node, NodeBuilder, NodeMessage, NodeState,
-    Receiver, ScriptBuf, SyncUpdate, Transaction, TrustedPeer, TxBroadcastPolicy, Txid, Warning,
+    Receiver, ScriptBuf, Transaction, TrustedPeer, TxBroadcastPolicy, Txid, Warning,
     MAINNET_HEADER_CP, SIGNET_HEADER_CP,
 };
 
@@ -168,7 +168,7 @@ impl<K> Client<K>
 where
     K: fmt::Debug + Clone + Ord,
 {
-    /// Build a light client from a [`KeychainTxOutIndex`] and checkpoint
+    /// Build a light client from a [`KeychainTxOutIndex`] and [`CheckPoint`].
     pub fn from_index(
         cp: CheckPoint,
         index: &KeychainTxOutIndex<K>,
@@ -185,6 +185,11 @@ where
 
     /// Return the most recent update from the node once it has synced to the network's tip.
     /// This may take a significant portion of time during wallet recoveries or dormant wallets.
+    /// Note that you may call this method in a loop as long as the [`Node`] is running.
+    ///
+    /// A reference to a [`NodeMessageHandler`] is required, which handles events emitted from a running
+    /// [`Node`]. Production applications should define how the application handles these events and displays
+    /// them to end users.
     pub async fn update(&mut self, logger: &dyn NodeMessageHandler) -> Option<FullScanResult<K>> {
         let mut chain_changeset = BTreeMap::new();
         while let Ok(message) = self.receiver.recv().await {
@@ -274,7 +279,8 @@ where
             .map_err(Error::from)
     }
 
-    /// Add more scripts to the node. Could this just check a SPK index?
+    /// Add more scripts to the node. For example, a user may reveal a Bitcoin address to receive a payment,
+    /// so this script should be added to the [`Node`].
     pub async fn add_script(&self, script: impl Into<ScriptBuf>) -> Result<(), Error> {
         self.sender.add_script(script).await.map_err(Error::from)
     }

@@ -61,7 +61,7 @@ const PEEK_INDEX: u32 = 20;
 const RECOMMENDED_PEERS: u8 = 2;
 
 #[derive(Debug)]
-/// Construct a light client from higher level components.
+/// Construct a light client from a [`Wallet`] reference.
 pub struct LightClientBuilder<'a> {
     wallet: &'a Wallet,
     peers: Option<Vec<TrustedPeer>>,
@@ -73,7 +73,7 @@ pub struct LightClientBuilder<'a> {
 }
 
 impl<'a> LightClientBuilder<'a> {
-    /// Construct a new node builder
+    /// Construct a new node builder.
     pub fn new(wallet: &'a Wallet) -> Self {
         Self {
             wallet,
@@ -163,7 +163,7 @@ impl<'a> LightClientBuilder<'a> {
         cp
     }
 
-    /// Build a light client node and a client to interact with the node
+    /// Build a light client node and a client to interact with the node.
     pub fn build(self) -> Result<(Node, Client<KeychainKind>), Error> {
         let network = self.wallet.network();
         let mut node_builder = NodeBuilder::new(network);
