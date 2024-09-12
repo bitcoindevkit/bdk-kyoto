@@ -173,7 +173,7 @@ where
         cp: CheckPoint,
         index: &KeychainTxOutIndex<K>,
         client: kyoto::Client,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, MissingGenesisError> {
         let (sender, receiver) = client.split();
         Ok(Self {
             sender,
@@ -269,25 +269,28 @@ where
     }
 
     /// Broadcast a [`Transaction`] with a [`TxBroadcastPolicy`] strategy.
-    pub async fn broadcast(&self, tx: Transaction, policy: TxBroadcastPolicy) -> Result<(), Error> {
+    pub async fn broadcast(
+        &self,
+        tx: Transaction,
+        policy: TxBroadcastPolicy,
+    ) -> Result<(), ClientError> {
         self.sender
             .broadcast_tx(TxBroadcast {
                 tx,
                 broadcast_policy: policy,
             })
             .await
-            .map_err(Error::from)
     }
 
     /// Add more scripts to the node. For example, a user may reveal a Bitcoin address to receive a payment,
     /// so this script should be added to the [`Node`].
-    pub async fn add_script(&self, script: impl Into<ScriptBuf>) -> Result<(), Error> {
-        self.sender.add_script(script).await.map_err(Error::from)
+    pub async fn add_script(&self, script: impl Into<ScriptBuf>) -> Result<(), ClientError> {
+        self.sender.add_script(script).await
     }
 
     /// Shutdown the node.
-    pub async fn shutdown(&self) -> Result<(), Error> {
-        self.sender.shutdown().await.map_err(Error::from)
+    pub async fn shutdown(&self) -> Result<(), ClientError> {
+        self.sender.shutdown().await
     }
 
     /// Get a structure to broadcast transactions. Useful for broadcasting transactions and updating concurrently.
@@ -318,57 +321,12 @@ impl TransactionBroadcaster {
         &mut self,
         tx: &Transaction,
         policy: TxBroadcastPolicy,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ClientError> {
         self.sender
             .broadcast_tx(TxBroadcast {
                 tx: tx.clone(),
                 broadcast_policy: policy,
             })
             .await
-            .map_err(Error::from)
-    }
-}
-
-/// Errors thrown by a client.
-#[derive(Debug)]
-pub enum Error {
-    /// The channel to receive a message was closed. Likely the node has stopped running.
-    Sender(ClientError),
-    /// The [`LocalChain`] provided has no genesis block.
-    MissingGenesis(MissingGenesisError),
-}
-
-impl core::fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Sender(e) => write!(
-                f,
-                "the receiving channel has been close. Is the node still running?: {e}"
-            ),
-            Self::MissingGenesis(e) => {
-                write!(f, "the local chain provided has no genesis block: {e}")
-            }
-        }
-    }
-}
-
-impl std::error::Error for Error {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Error::Sender(s) => Some(s),
-            Error::MissingGenesis(m) => Some(m),
-        }
-    }
-}
-
-impl From<MissingGenesisError> for Error {
-    fn from(value: MissingGenesisError) -> Self {
-        Error::MissingGenesis(value)
-    }
-}
-
-impl From<ClientError> for Error {
-    fn from(value: ClientError) -> Self {
-        Error::Sender(value)
     }
 }

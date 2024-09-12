@@ -47,6 +47,7 @@
 
 use std::{collections::HashSet, path::PathBuf, str::FromStr, time::Duration};
 
+use bdk_chain::local_chain::MissingGenesisError;
 use bdk_wallet::{KeychainKind, Wallet};
 use kyoto::{
     chain::checkpoints::{
@@ -164,7 +165,7 @@ impl<'a> LightClientBuilder<'a> {
     }
 
     /// Build a light client node and a client to interact with the node.
-    pub fn build(self) -> Result<(Node, Client<KeychainKind>), Error> {
+    pub fn build(self) -> Result<(Node, Client<KeychainKind>), BuilderError> {
         let network = self.wallet.network();
         let mut node_builder = NodeBuilder::new(network);
         if let Some(whitelist) = self.peers {
@@ -232,39 +233,39 @@ impl<'a> LightClientBuilder<'a> {
 
 /// Errors thrown by a client.
 #[derive(Debug)]
-pub enum Error {
+pub enum BuilderError {
     /// The `LocalChain` was not initialized with a genesis block.
-    MissingGenesis(crate::Error),
+    Chain(MissingGenesisError),
     /// The database encountered a fatal error.
     Database(DatabaseError),
 }
 
-impl std::fmt::Display for Error {
+impl std::fmt::Display for BuilderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::MissingGenesis(e) => write!(f, "genesis block not found: {e}"),
-            Error::Database(e) => write!(f, "fatal database error: {e}"),
+            BuilderError::Chain(e) => write!(f, "genesis block not found: {e}"),
+            BuilderError::Database(e) => write!(f, "fatal database error: {e}"),
         }
     }
 }
 
-impl std::error::Error for Error {
+impl std::error::Error for BuilderError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Error::MissingGenesis(e) => Some(e),
-            Error::Database(e) => Some(e),
+            BuilderError::Chain(e) => Some(e),
+            BuilderError::Database(e) => Some(e),
         }
     }
 }
 
-impl From<crate::Error> for Error {
-    fn from(value: crate::Error) -> Self {
-        Error::MissingGenesis(value)
+impl From<MissingGenesisError> for BuilderError {
+    fn from(value: MissingGenesisError) -> Self {
+        BuilderError::Chain(value)
     }
 }
 
-impl From<DatabaseError> for Error {
+impl From<DatabaseError> for BuilderError {
     fn from(value: DatabaseError) -> Self {
-        Error::Database(value)
+        BuilderError::Database(value)
     }
 }
