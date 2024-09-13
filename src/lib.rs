@@ -70,13 +70,13 @@
 //!     let (descriptor, _) = Descriptor::parse_descriptor(&secp, &RECEIVE)?;
 //!     let (change_descriptor, _) = Descriptor::parse_descriptor(&secp, &CHANGE)?;
 //!
-//!     let g = genesis_block(Network::Signet).block_hash();
-//!     let (mut chain, _) = LocalChain::from_genesis_hash(g);
+//!     let genesis_hash = genesis_block(Network::Signet).block_hash();
+//!     let (mut chain, _) = LocalChain::from_genesis_hash(genesis_hash);
 //!
 //!     let mut graph = IndexedTxGraph::new({
 //!         let mut index = KeychainTxOutIndex::default();
-//!         let _ = index.insert_descriptor(0usize, descriptor);
-//!         let _ = index.insert_descriptor(1, change_descriptor);
+//!         let _ = index.insert_descriptor("external", descriptor);
+//!         let _ = index.insert_descriptor("internal", change_descriptor);
 //!         index
 //!     });
 //!
@@ -112,12 +112,10 @@
 //!     let logger = PrintLogger::new();
 //!     if let Some(update) = client.update(&logger).await {
 //!         let _ = chain.apply_update(update.chain_update.unwrap())?;
-//!         let mut indexed_tx_graph_changeset = graph.apply_update(update.tx_update);
-//!         let index_changeset = graph
+//!         let _ = graph.apply_update(update.tx_update);
+//!         let _ = graph
 //!             .index
 //!             .reveal_to_target_multi(&update.last_active_indices);
-//!         indexed_tx_graph_changeset.merge(index_changeset.into());
-//!         let _ = graph.apply_changeset(indexed_tx_graph_changeset);
 //!     }
 //!     client.shutdown().await?;
 //!     Ok(())
