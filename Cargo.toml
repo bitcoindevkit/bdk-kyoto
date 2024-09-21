@@ -6,7 +6,7 @@ rust-version = "1.63.0"
 
 [dependencies]
 bdk_chain = { version = "0.19.0" }
-kyoto-cbf = { git = "https://github.com/rustaceanrob/kyoto", rev = "d9ab1ce3fdfee863f152fe145596b7f93171b5aa" }
+kyoto-cbf = { git = "https://github.com/rustaceanrob/kyoto", rev = "408956cf5143b9b18fbcdbf3f35480540af73411" }
 tracing = { version = "0.1", optional = true }
 tracing-subscriber = { version = "0.3", optional = true }
 
