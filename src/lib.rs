@@ -156,7 +156,7 @@ pub use kyoto::{
 /// A compact block filter client.
 #[derive(Debug)]
 pub struct Client<K> {
-    // channel sender
+    // client
     client: kyoto::Client,
     // channel receiver
     receiver: kyoto::Receiver<NodeMessage>,
