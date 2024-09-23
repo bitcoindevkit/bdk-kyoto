@@ -2,8 +2,8 @@
 //!
 //! ## Details
 //!
-//! The node has a number of configurations. Notably, the height of in the blockchain to start a wallet recovery
-//! and the nodes on the peer-to-peer network are both configurable.
+//! The node has a number of configurations. Notably, the height of in the blockchain to start a
+//! wallet recovery and the nodes on the peer-to-peer network are both configurable.
 //!
 //! ```no_run
 //! # const RECEIVE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/0/*)";
@@ -112,8 +112,9 @@ impl<'a> LightClientBuilder<'a> {
         self
     }
 
-    /// Use all the scripts up to the wallet's lookahead parameter. Only to be used during wallet recovery,
-    /// when we do not have any knowledge of the scripts used in the wallet yet. For more information on the wallet lookahead,
+    /// Use all the scripts up to the wallet's lookahead parameter. Only to be used during wallet
+    /// recovery, when we do not have any knowledge of the scripts used in the wallet yet. For
+    /// more information on the wallet lookahead,
     /// see [`KeychainTxOutIndex`](bdk_wallet::chain::indexer::keychain_txout::KeychainTxOutIndex).
     pub fn use_lookahead_scripts(mut self) -> Self {
         self.lookahead = true;
@@ -173,8 +174,9 @@ impl<'a> LightClientBuilder<'a> {
         }
         match self.birthday_height {
             Some(birthday) => {
-                // If there is a birthday at a height less than our local chain, we may assume we've already synced
-                // the wallet past the birthday height and no longer need it.
+                // If there is a birthday at a height less than our local chain, we may assume we've
+                // already synced the wallet past the birthday height and no longer
+                // need it.
                 if birthday < self.wallet.local_chain().tip().height() {
                     let block_id = self.wallet.local_chain().tip();
                     let header_cp = HeaderCheckpoint::new(block_id.height(), block_id.hash());
@@ -185,8 +187,9 @@ impl<'a> LightClientBuilder<'a> {
                 }
             }
             None => {
-                // If there is no birthday provided and the local chain starts at the genesis block, we assume this
-                // is a new wallet and use the most recent checkpoint. Otherwise we sync from the last known tip in the
+                // If there is no birthday provided and the local chain starts at the genesis block,
+                // we assume this is a new wallet and use the most recent
+                // checkpoint. Otherwise we sync from the last known tip in the
                 // LocalChain.
                 let block_id = self.wallet.local_chain().tip();
                 if block_id.height() > 0 {

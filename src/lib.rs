@@ -1,20 +1,23 @@
 //! BDK-Kyoto is an extension of [Kyoto](https://github.com/rustaceanrob/kyoto), a client-side implementation of BIP157/BIP158.
-//! These proposals define a way for users to fetch transactions privately, using _compact block filters_.
-//! You may want to read the specification [here](https://github.com/bitcoin/bips/blob/master/bip-0158.mediawiki).
+//! These proposals define a way for users to fetch transactions privately, using _compact block
+//! filters_. You may want to read the specification [here](https://github.com/bitcoin/bips/blob/master/bip-0158.mediawiki).
 //!
-//! Kyoto runs as a psuedo-node, sending messages over the Bitcoin peer-to-peer layer, finding new peers to connect to, and managing a
-//! light-weight database of Bitcoin block headers. As such, developing a wallet application using this crate is distinct from a typical
-//! client/server relationship. Esplora and Electrum offer _proactive_ APIs, in that the servers will respond to events as they are requested.
-//! In the case of running a node as a background process, the developer experience is far more _reactive_, in that the node may emit any number of events,
-//! and the application may respond to them.
+//! Kyoto runs as a psuedo-node, sending messages over the Bitcoin peer-to-peer layer, finding new
+//! peers to connect to, and managing a light-weight database of Bitcoin block headers. As such,
+//! developing a wallet application using this crate is distinct from a typical client/server
+//! relationship. Esplora and Electrum offer _proactive_ APIs, in that the servers will respond to
+//! events as they are requested. In the case of running a node as a background process, the
+//! developer experience is far more _reactive_, in that the node may emit any number of events, and
+//! the application may respond to them.
 //!
-//! BDK-Kyoto curates these events into structures that are easily handled by BDK APIs, making integration of compact block filters easily understood.
-//! Developers are free to use [`bdk_wallet`], or only primatives found in [`bdk_core`](https://docs.rs/bdk_core/latest/bdk_core/) and [`bdk_chain`].
+//! BDK-Kyoto curates these events into structures that are easily handled by BDK APIs, making
+//! integration of compact block filters easily understood. Developers are free to use [`bdk_wallet`], or only primatives found in [`bdk_core`](https://docs.rs/bdk_core/latest/bdk_core/) and [`bdk_chain`].
 //!
 //! ## Examples
 //!
-//! If you have an existing project that leverages `bdk_wallet`, building the compact block filter _node_ and _client_ is simple.
-//! You may construct and configure a node to integrate with your wallet by using a [`LightClientBuilder`](crate).
+//! If you have an existing project that leverages `bdk_wallet`, building the compact block filter
+//! _node_ and _client_ is simple. You may construct and configure a node to integrate with your
+//! wallet by using a [`LightClientBuilder`](crate).
 //!
 //! ```no_run
 //! # const RECEIVE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/0/*)";
@@ -44,7 +47,8 @@
 //! }
 //! ```
 //!
-//! Custom wallet implementations may still take advantage of BDK-Kyoto, however building the [`Client`] will involve configuring Kyoto directly.
+//! Custom wallet implementations may still take advantage of BDK-Kyoto, however building the
+//! [`Client`] will involve configuring Kyoto directly.
 //!
 //! ```no_run
 //! # const RECEIVE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/0/*)";
@@ -119,7 +123,7 @@
 //!     }
 //!     client.shutdown().await?;
 //!     Ok(())
-//!}
+//! }
 //! ```
 
 #![warn(missing_docs)]
@@ -153,7 +157,7 @@ pub use kyoto::{
 #[derive(Debug)]
 pub struct Client<K> {
     // channel sender
-    sender: kyoto::ClientSender,
+    client: kyoto::Client,
     // channel receiver
     receiver: kyoto::Receiver<NodeMessage>,
     // changes to local chain
@@ -172,9 +176,9 @@ where
         index: &KeychainTxOutIndex<K>,
         client: kyoto::Client,
     ) -> Result<Self, MissingGenesisError> {
-        let (sender, receiver) = client.split();
+        let receiver = client.receiver();
         Ok(Self {
-            sender,
+            client,
             receiver,
             chain: LocalChain::from_tip(cp)?,
             graph: IndexedTxGraph::new(index.clone()),
@@ -185,9 +189,9 @@ where
     /// This may take a significant portion of time during wallet recoveries or dormant wallets.
     /// Note that you may call this method in a loop as long as the [`Node`] is running.
     ///
-    /// A reference to a [`NodeMessageHandler`] is required, which handles events emitted from a running
-    /// [`Node`]. Production applications should define how the application handles these events and displays
-    /// them to end users.
+    /// A reference to a [`NodeMessageHandler`] is required, which handles events emitted from a
+    /// running [`Node`]. Production applications should define how the application handles
+    /// these events and displays them to end users.
     pub async fn update(&mut self, logger: &dyn NodeMessageHandler) -> Option<FullScanResult<K>> {
         let mut chain_changeset = BTreeMap::new();
         while let Ok(message) = self.receiver.recv().await {
@@ -272,7 +276,7 @@ where
         tx: Transaction,
         policy: TxBroadcastPolicy,
     ) -> Result<(), ClientError> {
-        self.sender
+        self.client
             .broadcast_tx(TxBroadcast {
                 tx,
                 broadcast_policy: policy,
@@ -280,25 +284,35 @@ where
             .await
     }
 
-    /// Add more scripts to the node. For example, a user may reveal a Bitcoin address to receive a payment,
-    /// so this script should be added to the [`Node`].
+    /// Add more scripts to the node. For example, a user may reveal a Bitcoin address to receive a
+    /// payment, so this script should be added to the [`Node`].
     pub async fn add_script(&self, script: impl Into<ScriptBuf>) -> Result<(), ClientError> {
-        self.sender.add_script(script).await
+        self.client.add_script(script).await
     }
 
     /// Shutdown the node.
     pub async fn shutdown(&self) -> Result<(), ClientError> {
-        self.sender.shutdown().await
+        self.client.shutdown().await
     }
 
-    /// Get a structure to broadcast transactions. Useful for broadcasting transactions and updating concurrently.
+    /// Get a structure to broadcast transactions. Useful for broadcasting transactions and updating
+    /// concurrently.
     pub fn transaction_broadcaster(&self) -> TransactionBroadcaster {
-        TransactionBroadcaster::new(self.sender.clone())
+        TransactionBroadcaster::new(self.client.sender())
     }
 
-    /// Get a mutable reference to the underlying channel [`Receiver`].
-    pub fn channel_receiver(&mut self) -> &mut Receiver<NodeMessage> {
-        &mut self.receiver
+    /// Generate a new channel [`Receiver`] to get [`NodeMessage`] directly. Note that
+    /// [`Client::update`] will handle messages and build updates.
+    ///
+    /// ## Performance
+    ///
+    /// When generating a new channel [`Receiver`], a message must be consumed by _all_ [`Receiver`]
+    /// before it is removed from memory. For channels that process data slowly, this can cause
+    /// messages to build up in the channel, and may even cause errors if too many messages
+    /// are held in the channel at one time. For the best results, applications may not want to call
+    /// this method at all, or only a few times.
+    pub fn channel_receiver(&self) -> Receiver<NodeMessage> {
+        self.client.receiver()
     }
 }
 

@@ -2,12 +2,13 @@
 //!
 //! # Examples
 //!
-//! For quick iteration and debugging, the [`PrintLogger`] responds to node events by simply printing the display to the console.
+//! For quick iteration and debugging, the [`PrintLogger`] responds to node events by simply
+//! printing the display to the console.
 //!
 //! ```rust
-//! use bdk_kyoto::logger::{PrintLogger, NodeMessageHandler};
+//! use bdk_kyoto::logger::{NodeMessageHandler, PrintLogger};
 //! use bdk_kyoto::Warning;
-//!     
+//!
 //! let logger = PrintLogger::new();
 //! logger.dialog("The node is running".into());
 //! logger.warning(Warning::PeerTimedOut);
@@ -16,16 +17,17 @@
 //! For a more descriptive console log, the `tracing` feature may be used.
 //!
 //! ```rust
-//! use bdk_kyoto::logger::{TraceLogger, NodeMessageHandler};
+//! use bdk_kyoto::logger::{NodeMessageHandler, TraceLogger};
 //! use bdk_kyoto::Warning;
-//!     
+//!
 //! let logger = TraceLogger::new();
 //! logger.dialog("The node is running".into());
 //! logger.warning(Warning::PeerTimedOut);
 //! ```
 //!
-//! For production applications, a custom implementation of [`NodeMessageHandler`] should be implemented.
-//! An example of a good applciation logger should implement user interface behavior and potentially save information to a file.
+//! For production applications, a custom implementation of [`NodeMessageHandler`] should be
+//! implemented. An example of a good applciation logger should implement user interface behavior
+//! and potentially save information to a file.
 
 use std::fmt::Debug;
 
