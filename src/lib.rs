@@ -33,7 +33,7 @@
 //!         .network(Network::Signet)
 //!         .create_wallet_no_persist()?;
 //!
-//!     let (mut node, mut client) = LightClientBuilder::new(&wallet).build()?;
+//!     let (node, mut client) = LightClientBuilder::new(&wallet).build()?;
 //!
 //!     tokio::task::spawn(async move { node.run().await });
 //!
@@ -96,7 +96,7 @@
 //!     let peers = vec![trusted];
 //!
 //!     let builder = NodeBuilder::new(Network::Signet);
-//!     let (mut node, kyoto_client) = builder
+//!     let (node, kyoto_client) = builder
 //!         .add_peers(peers)
 //!         .add_scripts(spks_to_watch)
 //!         .anchor_checkpoint(HeaderCheckpoint::new(
