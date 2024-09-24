@@ -3,15 +3,15 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
 use tokio::task;
 
-use bdk_kyoto::logger::PrintLogger;
-use bdk_kyoto::Client;
-use bdk_wallet::bitcoin::{
+use bdk_chain::bitcoin::{
     constants::genesis_block, secp256k1::Secp256k1, Address, BlockHash, Network, ScriptBuf,
 };
-use bdk_wallet::chain::{
+use bdk_chain::{
     keychain_txout::KeychainTxOutIndex, local_chain::LocalChain, miniscript::Descriptor, FullTxOut,
     IndexedTxGraph, SpkIterator,
 };
+use bdk_kyoto::logger::PrintLogger;
+use bdk_kyoto::Client;
 use kyoto::chain::checkpoints::HeaderCheckpoint;
 use kyoto::core::builder::NodeBuilder;
 
