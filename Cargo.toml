@@ -33,3 +33,4 @@ name = "signet"
 
 [[example]]
 name = "wallet"
+required-features = ["wallet", "trace"]
