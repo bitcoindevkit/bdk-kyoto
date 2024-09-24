@@ -30,7 +30,7 @@
 //!         .network(Network::Signet)
 //!         .create_wallet_no_persist()?;
 //!
-//!     let (mut node, mut client) = LightClientBuilder::new(&wallet)
+//!     let (node, mut client) = LightClientBuilder::new(&wallet)
 //!         // When recovering a user's wallet, specify a height to start at
 //!         .scan_after(200_000)
 //!         // A node may handle mutliple connections
