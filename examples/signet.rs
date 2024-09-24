@@ -53,7 +53,7 @@ async fn main() -> anyhow::Result<()> {
 
     let builder = NodeBuilder::new(Network::Signet);
     let (node, client) = builder
-        .add_peers(peers.into_iter().map(|ip| (ip, None).into()).collect())
+        .add_peers(peers.into_iter().map(|ip| ip.into()).collect())
         .add_scripts(spks_to_watch)
         .anchor_checkpoint(HeaderCheckpoint::new(
             205_000,
@@ -62,9 +62,8 @@ async fn main() -> anyhow::Result<()> {
             )?,
         ))
         .num_required_peers(2)
-        .build_node()
-        .unwrap();
-    let mut client = Client::from_index(chain.tip(), &graph.index, client).unwrap();
+        .build_node()?;
+    let mut client = Client::from_index(chain.tip(), &graph.index, client)?;
 
     // Run the node
     if !node.is_running() {
