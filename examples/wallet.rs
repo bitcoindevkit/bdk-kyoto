@@ -13,9 +13,6 @@ const PEERS: &[IpAddr] = &[IpAddr::V4(Ipv4Addr::new(23, 137, 57, 100))];
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let subscriber = tracing_subscriber::FmtSubscriber::new();
-    tracing::subscriber::set_global_default(subscriber).unwrap();
-
     let desc = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/0/*)";
     let change_desc = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/1/*)";
 
@@ -43,18 +40,19 @@ async fn main() -> anyhow::Result<()> {
 
     tokio::task::spawn(async move { node.run().await });
 
+    // Print logs to the console using the `tracing` crate
+    let logger = TraceLogger::new()?;
+
     tracing::info!(
         "Balance before sync: {} sats",
         wallet.balance().total().to_sat()
     );
 
     // Sync and apply updates. We can do this a continual loop while the "application" is running.
-    // Often this loop would be on a separate "Task" in a Swift app for instance
-    let logger = TraceLogger::new();
+    // Often this would occur on a separate thread than the underlying application user interface.
     loop {
         if let Some(update) = client.update(&logger).await {
             wallet.apply_update(update)?;
-            // Do something here to add more scripts?
             tracing::info!("Tx count: {}", wallet.transactions().count());
             tracing::info!("Balance: {}", wallet.balance().total().to_sat());
             let last_revealed = wallet.derivation_index(KeychainKind::External).unwrap();

@@ -20,7 +20,7 @@
 //! use bdk_kyoto::logger::{NodeMessageHandler, TraceLogger};
 //! use bdk_kyoto::Warning;
 //!
-//! let logger = TraceLogger::new();
+//! let logger = TraceLogger::new().unwrap();
 //! logger.dialog("The node is running".into());
 //! logger.warning(Warning::PeerTimedOut);
 //! ```
@@ -34,6 +34,8 @@ use std::fmt::Debug;
 use kyoto::NodeState;
 use kyoto::Txid;
 use kyoto::Warning;
+#[cfg(feature = "trace")]
+use tracing::subscriber::SetGlobalDefaultError;
 
 /// Handle dialog and state changes from a node with some arbitrary behavior.
 /// The primary purpose of this trait is not to respond to events by persisting changes,
@@ -106,16 +108,22 @@ impl NodeMessageHandler for PrintLogger {
     }
 }
 
-/// Print messages from the node to the console
+/// Print messages from the node to the console using [`tracing`].
 #[cfg(feature = "trace")]
 #[derive(Default, Debug)]
 pub struct TraceLogger {}
 
 #[cfg(feature = "trace")]
 impl TraceLogger {
-    /// Build a new trace logger
-    pub fn new() -> Self {
-        Self {}
+    /// Build a new trace logger. This constructor will initialize the [`tracing::subscriber`] globally.
+    ///
+    /// ## Errors
+    ///
+    /// If [`TraceLogger::new`] has already been called.
+    pub fn new() -> Result<Self, SetGlobalDefaultError> {
+        let subscriber = tracing_subscriber::FmtSubscriber::new();
+        tracing::subscriber::set_global_default(subscriber)?;
+        Ok(Self {})
     }
 }
 
