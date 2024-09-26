@@ -149,7 +149,7 @@ pub mod logger;
 pub use bdk_chain::local_chain::MissingGenesisError;
 pub use kyoto::{
     ClientError, DatabaseError, HeaderCheckpoint, Node, NodeBuilder, NodeMessage, NodeState,
-    Receiver, ScriptBuf, Transaction, TrustedPeer, TxBroadcastPolicy, Txid, Warning,
+    Receiver, ScriptBuf, ServiceFlags, Transaction, TrustedPeer, TxBroadcastPolicy, Txid, Warning,
     MAINNET_HEADER_CP, SIGNET_HEADER_CP,
 };
 
