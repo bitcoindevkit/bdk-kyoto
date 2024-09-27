@@ -2,9 +2,9 @@ use std::net::{IpAddr, Ipv4Addr};
 
 use bdk_kyoto::builder::LightClientBuilder;
 use bdk_kyoto::logger::TraceLogger;
+use bdk_kyoto::{ServiceFlags, TrustedPeer};
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::{KeychainKind, Wallet};
-use kyoto::{ServiceFlags, TrustedPeer};
 
 /// Peer address whitelist
 const PEERS: &[IpAddr] = &[IpAddr::V4(Ipv4Addr::new(23, 137, 57, 100))];

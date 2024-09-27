@@ -11,9 +11,7 @@ use bdk_chain::{
     IndexedTxGraph, SpkIterator,
 };
 use bdk_kyoto::logger::PrintLogger;
-use bdk_kyoto::Client;
-use kyoto::chain::checkpoints::HeaderCheckpoint;
-use kyoto::core::builder::NodeBuilder;
+use bdk_kyoto::{Client, HeaderCheckpoint, NodeBuilder};
 
 const TARGET_INDEX: u32 = 20;
 
