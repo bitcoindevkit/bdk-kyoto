@@ -142,15 +142,15 @@ use kyoto::{IndexedBlock, SyncUpdate, TxBroadcast};
 
 use crate::logger::NodeMessageHandler;
 
-#[cfg(feature = "wallet")]
+#[cfg(all(feature = "wallet", feature = "rusqlite"))]
 pub mod builder;
 pub mod logger;
 
 pub use bdk_chain::local_chain::MissingGenesisError;
 pub use kyoto::{
-    ClientError, DatabaseError, HeaderCheckpoint, Node, NodeBuilder, NodeMessage, NodeState,
-    Receiver, ScriptBuf, ServiceFlags, Transaction, TrustedPeer, TxBroadcastPolicy, Txid, Warning,
-    MAINNET_HEADER_CP, SIGNET_HEADER_CP,
+    ClientError, HeaderCheckpoint, Node, NodeBuilder, NodeMessage, NodeState, Receiver, ScriptBuf,
+    ServiceFlags, Transaction, TrustedPeer, TxBroadcastPolicy, Txid, Warning, MAINNET_HEADER_CP,
+    SIGNET_HEADER_CP,
 };
 
 /// A compact block filter client.
