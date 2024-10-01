@@ -286,6 +286,11 @@ where
 
     /// Add more scripts to the node. For example, a user may reveal a Bitcoin address to receive a
     /// payment, so this script should be added to the [`Node`].
+    ///
+    /// ## Note
+    ///
+    /// When using the [`LightClientBuidler`](crate::builder), the wallet lookahead will be used
+    /// to peek ahead and scan for additional scripts.
     pub async fn add_script(&self, script: impl Into<ScriptBuf>) -> Result<(), ClientError> {
         self.client.add_script(script).await
     }

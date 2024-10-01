@@ -58,7 +58,6 @@ use kyoto::{
 
 use crate::Client;
 
-const PEEK_INDEX: u32 = 20;
 const RECOMMENDED_PEERS: u8 = 2;
 
 #[derive(Debug)]
@@ -70,7 +69,6 @@ pub struct LightClientBuilder<'a> {
     birthday_height: Option<u32>,
     data_dir: Option<PathBuf>,
     timeout: Option<Duration>,
-    lookahead: bool,
 }
 
 impl<'a> LightClientBuilder<'a> {
@@ -83,7 +81,6 @@ impl<'a> LightClientBuilder<'a> {
             birthday_height: None,
             data_dir: None,
             timeout: None,
-            lookahead: false,
         }
     }
     /// Add peers to connect to over the P2P network.
@@ -109,15 +106,6 @@ impl<'a> LightClientBuilder<'a> {
     /// height provided, this height will be ignored.
     pub fn scan_after(mut self, height: u32) -> Self {
         self.birthday_height = Some(height);
-        self
-    }
-
-    /// Use all the scripts up to the wallet's lookahead parameter. Only to be used during wallet
-    /// recovery, when we do not have any knowledge of the scripts used in the wallet yet. For
-    /// more information on the wallet lookahead,
-    /// see [`KeychainTxOutIndex`](bdk_wallet::chain::indexer::keychain_txout::KeychainTxOutIndex).
-    pub fn use_lookahead_scripts(mut self) -> Self {
-        self.lookahead = true;
         self
     }
 
@@ -215,11 +203,7 @@ impl<'a> LightClientBuilder<'a> {
                 .spk_index()
                 .last_revealed_index(keychain)
                 .unwrap_or(0);
-            let lookahead_index = if self.lookahead {
-                last_revealed + self.wallet.spk_index().lookahead()
-            } else {
-                last_revealed + PEEK_INDEX
-            };
+            let lookahead_index = last_revealed + self.wallet.spk_index().lookahead();
             for index in 0..=lookahead_index {
                 spks.insert(self.wallet.peek_address(keychain, index).script_pubkey());
             }

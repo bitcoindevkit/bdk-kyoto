@@ -34,7 +34,6 @@ async fn main() -> anyhow::Result<()> {
     let (node, mut client) = LightClientBuilder::new(&wallet)
         .scan_after(170_000)
         .peers(peers)
-        .use_lookahead_scripts()
         .build()
         .unwrap();
 
