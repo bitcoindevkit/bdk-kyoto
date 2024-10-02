@@ -147,6 +147,8 @@ pub mod builder;
 pub mod logger;
 
 pub use bdk_chain::local_chain::MissingGenesisError;
+#[cfg(feature = "rusqlite")]
+pub use kyoto::core::builder::NodeDefault;
 pub use kyoto::{
     ClientError, HeaderCheckpoint, Node, NodeBuilder, NodeMessage, NodeState, Receiver, ScriptBuf,
     ServiceFlags, Transaction, TrustedPeer, TxBroadcastPolicy, Txid, Warning, MAINNET_HEADER_CP,

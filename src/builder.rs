@@ -53,7 +53,9 @@ use kyoto::{
     chain::checkpoints::{
         HeaderCheckpoint, MAINNET_HEADER_CP, REGTEST_HEADER_CP, SIGNET_HEADER_CP,
     },
-    BlockHash, DatabaseError, Network, Node, NodeBuilder, ScriptBuf, TrustedPeer,
+    core::builder::NodeDefault,
+    db::error::SqlInitializationError,
+    BlockHash, Network, NodeBuilder, ScriptBuf, TrustedPeer,
 };
 
 use crate::Client;
@@ -154,7 +156,7 @@ impl<'a> LightClientBuilder<'a> {
     }
 
     /// Build a light client node and a client to interact with the node.
-    pub fn build(self) -> Result<(Node, Client<KeychainKind>), BuilderError> {
+    pub fn build(self) -> Result<(NodeDefault, Client<KeychainKind>), BuilderError> {
         let network = self.wallet.network();
         let mut node_builder = NodeBuilder::new(network);
         if let Some(whitelist) = self.peers {
@@ -218,13 +220,13 @@ impl<'a> LightClientBuilder<'a> {
     }
 }
 
-/// Errors thrown by a client.
+/// Errors thrown by the [`LightClientBuilder`].
 #[derive(Debug)]
 pub enum BuilderError {
     /// The `LocalChain` was not initialized with a genesis block.
     Chain(MissingGenesisError),
     /// The database encountered a fatal error.
-    Database(DatabaseError),
+    Database(SqlInitializationError),
 }
 
 impl std::fmt::Display for BuilderError {
@@ -251,8 +253,8 @@ impl From<MissingGenesisError> for BuilderError {
     }
 }
 
-impl From<DatabaseError> for BuilderError {
-    fn from(value: DatabaseError) -> Self {
+impl From<SqlInitializationError> for BuilderError {
+    fn from(value: SqlInitializationError) -> Self {
         BuilderError::Database(value)
     }
 }
