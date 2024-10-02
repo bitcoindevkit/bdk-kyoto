@@ -6,6 +6,7 @@ use tokio::time;
 
 use bdk_kyoto::builder::LightClientBuilder;
 use bdk_kyoto::logger::PrintLogger;
+use bdk_kyoto::NodeDefault;
 use bdk_kyoto::TrustedPeer;
 use bdk_testenv::bitcoincore_rpc::RpcApi;
 use bdk_testenv::bitcoind;
@@ -41,7 +42,7 @@ async fn wait_for_height(env: &TestEnv, height: u32) -> anyhow::Result<()> {
 fn init_node(
     env: &TestEnv,
     wallet: &bdk_wallet::Wallet,
-) -> anyhow::Result<(bdk_kyoto::Node, bdk_kyoto::Client<KeychainKind>)> {
+) -> anyhow::Result<(NodeDefault, bdk_kyoto::Client<KeychainKind>)> {
     let peer = env.bitcoind.params.p2p_socket.unwrap();
     let ip: IpAddr = (*peer.ip()).into();
     let port = peer.port();
