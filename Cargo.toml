@@ -1,6 +1,13 @@
 [package]
 name = "bdk_kyoto"
 version = "0.1.0"
+authors = ["Rob <rustaceanrob@protonmail.com>", "Bitcoin Dev Kit Developers"]
+description = "BDK blockchain integration using P2P light client Kyoto"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/bitcoindevkit/bdk-kyoto"
+documentation = "https://docs.rs/bdk-kyoto"
+readme = "README.md"
+keywords = ["bitcoin", "peer-to-peer", "light-client"]
 edition = "2021"
 rust-version = "1.63.0"
 
