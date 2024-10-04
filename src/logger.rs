@@ -6,7 +6,7 @@
 //! printing the display to the console.
 //!
 //! ```rust
-//! use bdk_kyoto::logger::{NodeMessageHandler, PrintLogger};
+//! use bdk_kyoto::logger::{NodeEventHandler, PrintLogger};
 //! use bdk_kyoto::Warning;
 //!
 //! let logger = PrintLogger::new();
@@ -17,7 +17,7 @@
 //! For a more descriptive console log, the `tracing` feature may be used.
 //!
 //! ```rust
-//! use bdk_kyoto::logger::{NodeMessageHandler, TraceLogger};
+//! use bdk_kyoto::logger::{NodeEventHandler, TraceLogger};
 //! use bdk_kyoto::Warning;
 //!
 //! let logger = TraceLogger::new().unwrap();
@@ -25,7 +25,7 @@
 //! logger.warning(Warning::PeerTimedOut);
 //! ```
 //!
-//! For production applications, a custom implementation of [`NodeMessageHandler`] should be
+//! For production applications, a custom implementation of [`NodeEventHandler`] should be
 //! implemented. An example of a good applciation logger should implement user interface behavior
 //! and potentially save information to a file.
 
@@ -42,7 +42,7 @@ use tracing::subscriber::SetGlobalDefaultError;
 /// or acting on the underlying wallet. Instead, this trait should be used to drive changes in user
 /// interface behavior or keep a simple log. Relevant events that effect on the wallet are handled
 /// automatically in [`Client::update`](crate::Client).
-pub trait NodeMessageHandler: Send + Sync + Debug + 'static {
+pub trait NodeEventHandler: Send + Sync + Debug + 'static {
     /// Make use of some message the node has sent.
     fn dialog(&self, dialog: String);
     /// Make use of some warning the node has sent.
@@ -72,7 +72,7 @@ impl PrintLogger {
     }
 }
 
-impl NodeMessageHandler for PrintLogger {
+impl NodeEventHandler for PrintLogger {
     fn dialog(&self, dialog: String) {
         println!("{dialog}");
     }
@@ -128,7 +128,7 @@ impl TraceLogger {
 }
 
 #[cfg(feature = "trace")]
-impl NodeMessageHandler for TraceLogger {
+impl NodeEventHandler for TraceLogger {
     fn dialog(&self, dialog: String) {
         tracing::info!("{dialog}")
     }
@@ -164,7 +164,7 @@ impl NodeMessageHandler for TraceLogger {
     }
 }
 
-impl NodeMessageHandler for () {
+impl NodeEventHandler for () {
     fn dialog(&self, _dialog: String) {}
     fn warning(&self, _warning: Warning) {}
     fn state_changed(&self, _state: NodeState) {}
