@@ -140,7 +140,7 @@ use bdk_chain::{
 use bdk_chain::{ConfirmationBlockTime, TxUpdate};
 use kyoto::{IndexedBlock, SyncUpdate, TxBroadcast};
 
-use crate::logger::NodeMessageHandler;
+use crate::logger::NodeEventHandler;
 
 #[cfg(all(feature = "wallet", feature = "rusqlite"))]
 pub mod builder;
@@ -191,10 +191,10 @@ where
     /// This may take a significant portion of time during wallet recoveries or dormant wallets.
     /// Note that you may call this method in a loop as long as the [`Node`] is running.
     ///
-    /// A reference to a [`NodeMessageHandler`] is required, which handles events emitted from a
+    /// A reference to a [`NodeEventHandler`] is required, which handles events emitted from a
     /// running [`Node`]. Production applications should define how the application handles
     /// these events and displays them to end users.
-    pub async fn update(&mut self, logger: &dyn NodeMessageHandler) -> Option<FullScanResult<K>> {
+    pub async fn update(&mut self, logger: &dyn NodeEventHandler) -> Option<FullScanResult<K>> {
         let mut chain_changeset = BTreeMap::new();
         while let Ok(message) = self.receiver.recv().await {
             self.log(&message, logger);
@@ -244,7 +244,7 @@ where
     }
 
     // Send dialogs to an arbitrary logger
-    fn log(&self, message: &NodeMessage, logger: &dyn NodeMessageHandler) {
+    fn log(&self, message: &NodeMessage, logger: &dyn NodeEventHandler) {
         match message {
             NodeMessage::Dialog(d) => logger.dialog(d.clone()),
             NodeMessage::Warning(w) => logger.warning(w.clone()),
