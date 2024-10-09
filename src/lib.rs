@@ -140,8 +140,6 @@ use bdk_chain::{
 use bdk_chain::{ConfirmationBlockTime, TxUpdate};
 use kyoto::{IndexedBlock, SyncUpdate, TxBroadcast};
 
-use crate::logger::NodeEventHandler;
-
 #[cfg(all(feature = "wallet", feature = "rusqlite"))]
 pub mod builder;
 pub mod logger;
@@ -348,4 +346,28 @@ impl TransactionBroadcaster {
             })
             .await
     }
+}
+
+/// Handle dialog and state changes from a node with some arbitrary behavior.
+/// The primary purpose of this trait is not to respond to events by persisting changes,
+/// or acting on the underlying wallet. Instead, this trait should be used to drive changes in user
+/// interface behavior or keep a simple log. Relevant events that effect on the wallet are handled
+/// automatically in [`Client::update`](Client).
+pub trait NodeEventHandler: Send + Sync + fmt::Debug + 'static {
+    /// Make use of some message the node has sent.
+    fn dialog(&self, dialog: String);
+    /// Make use of some warning the node has sent.
+    fn warning(&self, warning: Warning);
+    /// Handle a change in the node's state.
+    fn state_changed(&self, state: NodeState);
+    /// The required number of connections for the node was met.
+    fn connections_met(&self);
+    /// A transaction was broadcast to at least one peer.
+    fn tx_sent(&self, txid: Txid);
+    /// A transaction was rejected or failed to broadcast.
+    fn tx_failed(&self, txid: Txid);
+    /// A list of block heights were reorganized
+    fn blocks_disconnected(&self, blocks: Vec<u32>);
+    /// The node has synced to the height of the connected peers.
+    fn synced(&self, tip: u32);
 }

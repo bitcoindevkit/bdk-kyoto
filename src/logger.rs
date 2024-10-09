@@ -6,8 +6,9 @@
 //! printing the display to the console.
 //!
 //! ```rust
-//! use bdk_kyoto::logger::{NodeEventHandler, PrintLogger};
+//! use bdk_kyoto::logger::PrintLogger;
 //! use bdk_kyoto::Warning;
+//! use bdk_kyoto::NodeEventHandler;
 //!
 //! let logger = PrintLogger::new();
 //! logger.dialog("The node is running".into());
@@ -17,8 +18,9 @@
 //! For a more descriptive console log, the `tracing` feature may be used.
 //!
 //! ```rust
-//! use bdk_kyoto::logger::{NodeEventHandler, TraceLogger};
+//! use bdk_kyoto::logger::TraceLogger;
 //! use bdk_kyoto::Warning;
+//! use bdk_kyoto::NodeEventHandler;
 //!
 //! let logger = TraceLogger::new().unwrap();
 //! logger.dialog("The node is running".into());
@@ -37,29 +39,7 @@ use kyoto::Warning;
 #[cfg(feature = "trace")]
 use tracing::subscriber::SetGlobalDefaultError;
 
-/// Handle dialog and state changes from a node with some arbitrary behavior.
-/// The primary purpose of this trait is not to respond to events by persisting changes,
-/// or acting on the underlying wallet. Instead, this trait should be used to drive changes in user
-/// interface behavior or keep a simple log. Relevant events that effect on the wallet are handled
-/// automatically in [`Client::update`](crate::Client).
-pub trait NodeEventHandler: Send + Sync + Debug + 'static {
-    /// Make use of some message the node has sent.
-    fn dialog(&self, dialog: String);
-    /// Make use of some warning the node has sent.
-    fn warning(&self, warning: Warning);
-    /// Handle a change in the node's state.
-    fn state_changed(&self, state: NodeState);
-    /// The required number of connections for the node was met.
-    fn connections_met(&self);
-    /// A transaction was broadcast to at least one peer.
-    fn tx_sent(&self, txid: Txid);
-    /// A transaction was rejected or failed to broadcast.
-    fn tx_failed(&self, txid: Txid);
-    /// A list of block heights were reorganized
-    fn blocks_disconnected(&self, blocks: Vec<u32>);
-    /// The node has synced to the height of the connected peers.
-    fn synced(&self, tip: u32);
-}
+use crate::NodeEventHandler;
 
 /// Print messages from the node to the console
 #[derive(Default, Debug)]
