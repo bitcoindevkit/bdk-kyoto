@@ -1,4 +1,4 @@
-//! Construct a [`Node`] and [`Client`] by using a reference to a [`Wallet`].
+//! Construct a [`NodeDefault`] and [`Client`] by using a reference to a [`Wallet`].
 //!
 //! ## Details
 //!
