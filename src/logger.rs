@@ -6,6 +6,7 @@
 //! printing the display to the console.
 //!
 //! ```rust
+//! #[cfg(feature = "callbacks")]
 //! use bdk_kyoto::logger::PrintLogger;
 //! use bdk_kyoto::Warning;
 //! use bdk_kyoto::NodeEventHandler;
@@ -15,7 +16,7 @@
 //! logger.warning(Warning::PeerTimedOut);
 //! ```
 //!
-//! For a more descriptive console log, the `tracing` feature may be used.
+//! For a more descriptive console log, the `trace` feature may be used.
 //!
 //! ```rust
 //! use bdk_kyoto::logger::TraceLogger;
