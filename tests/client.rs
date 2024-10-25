@@ -5,6 +5,7 @@ use tokio::task;
 use tokio::time;
 
 use bdk_kyoto::builder::LightClientBuilder;
+#[cfg(feature = "callbacks")]
 use bdk_kyoto::logger::PrintLogger;
 use bdk_kyoto::NodeDefault;
 use bdk_kyoto::TrustedPeer;
@@ -57,6 +58,7 @@ fn init_node(
 }
 
 #[tokio::test]
+#[cfg(feature = "callbacks")]
 async fn update_returns_blockchain_data() -> anyhow::Result<()> {
     let env = testenv()?;
 
@@ -118,6 +120,7 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+#[cfg(feature = "callbacks")]
 async fn update_handles_reorg() -> anyhow::Result<()> {
     let env = testenv()?;
 
