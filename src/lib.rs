@@ -437,6 +437,12 @@ where
     pub fn channel_receiver(&self) -> Receiver<NodeMessage> {
         self.client.receiver()
     }
+
+    /// Get a reference to the [`Client`](kyoto::Client) for more commands to issue to
+    /// the underlying node.
+    pub fn inner_client(&self) -> &kyoto::Client {
+        &self.client
+    }
 }
 
 /// Type that broadcasts transactions to the network.
