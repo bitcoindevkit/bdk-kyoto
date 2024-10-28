@@ -126,18 +126,13 @@
 //!
 //!     let peer = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
 //!     let trusted = TrustedPeer::from_ip(peer);
-//!     let peers = vec![trusted];
+//!     let cp = HeaderCheckpoint::closest_checkpoint_below_height(170_000, Network::Signet);
 //!
 //!     let builder = NodeBuilder::new(Network::Signet);
 //!     let (node, kyoto_client) = builder
-//!         .add_peers(peers)
+//!         .add_peer(trusted)
 //!         .add_scripts(spks_to_watch)
-//!         .anchor_checkpoint(HeaderCheckpoint::new(
-//!             170_000,
-//!             BlockHash::from_str(
-//!                 "00000041c812a89f084f633e4cf47e819a2f6b1c0a15162355a930410522c99d",
-//!             ).unwrap(),
-//!         ))
+//!         .anchor_checkpoint(cp)
 //!         .num_required_peers(2)
 //!         .build_node()
 //!         .unwrap();

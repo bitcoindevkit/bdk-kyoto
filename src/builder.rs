@@ -45,17 +45,13 @@
 //! }
 //! ```
 
-use std::{collections::HashSet, path::PathBuf, str::FromStr, time::Duration};
+use std::{collections::HashSet, path::PathBuf, time::Duration};
 
 use bdk_chain::local_chain::MissingGenesisError;
 use bdk_wallet::{KeychainKind, Wallet};
 use kyoto::{
-    chain::checkpoints::{
-        HeaderCheckpoint, MAINNET_HEADER_CP, REGTEST_HEADER_CP, SIGNET_HEADER_CP,
-    },
-    core::builder::NodeDefault,
-    db::error::SqlInitializationError,
-    BlockHash, Network, NodeBuilder, ScriptBuf, TrustedPeer,
+    chain::checkpoints::HeaderCheckpoint, core::builder::NodeDefault,
+    db::error::SqlInitializationError, NodeBuilder, ScriptBuf, TrustedPeer,
 };
 
 use crate::Client;
@@ -98,8 +94,8 @@ impl<'a> LightClientBuilder<'a> {
     }
 
     /// Add a directory to store node data
-    pub fn data_dir(mut self, dir: PathBuf) -> Self {
-        self.data_dir = Some(dir);
+    pub fn data_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.data_dir = Some(dir.into());
         self
     }
 
@@ -115,44 +111,6 @@ impl<'a> LightClientBuilder<'a> {
     pub fn timeout_duration(mut self, timeout: Duration) -> Self {
         self.timeout = Some(timeout);
         self
-    }
-
-    // Get the most recent checkpoint that is less than the recovery height.
-    fn get_checkpoint_for_height(height: u32, network: &Network) -> HeaderCheckpoint {
-        let checkpoints: Vec<HeaderCheckpoint> = match network {
-            Network::Bitcoin => MAINNET_HEADER_CP
-                .iter()
-                .copied()
-                .map(|(height, hash)| {
-                    HeaderCheckpoint::new(height, BlockHash::from_str(hash).unwrap())
-                })
-                .collect(),
-            Network::Testnet => panic!(),
-            Network::Signet => SIGNET_HEADER_CP
-                .iter()
-                .copied()
-                .map(|(height, hash)| {
-                    HeaderCheckpoint::new(height, BlockHash::from_str(hash).unwrap())
-                })
-                .collect(),
-            Network::Regtest => REGTEST_HEADER_CP
-                .iter()
-                .copied()
-                .map(|(height, hash)| {
-                    HeaderCheckpoint::new(height, BlockHash::from_str(hash).unwrap())
-                })
-                .collect(),
-            _ => unreachable!(),
-        };
-        let mut cp = *checkpoints.first().unwrap();
-        for checkpoint in checkpoints {
-            if height.ge(&checkpoint.height) {
-                cp = checkpoint;
-            } else {
-                break;
-            }
-        }
-        cp
     }
 
     /// Build a light client node and a client to interact with the node.
@@ -172,7 +130,7 @@ impl<'a> LightClientBuilder<'a> {
                     let header_cp = HeaderCheckpoint::new(block_id.height(), block_id.hash());
                     node_builder = node_builder.anchor_checkpoint(header_cp)
                 } else {
-                    let cp = Self::get_checkpoint_for_height(birthday, &network);
+                    let cp = HeaderCheckpoint::closest_checkpoint_below_height(birthday, network);
                     node_builder = node_builder.anchor_checkpoint(cp)
                 }
             }
