@@ -13,7 +13,7 @@ rust-version = "1.63.0"
 
 [dependencies]
 bdk_chain = { version = "0.20.0" }
-kyoto-cbf = { version = "0.3.0", default-features = false, features = ["dns"] }
+kyoto-cbf = { version = "0.4.0", default-features = false, features = ["dns"] }
 tracing = { version = "0.1", optional = true }
 tracing-subscriber = { version = "0.3", optional = true }
 
