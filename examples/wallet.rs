@@ -1,8 +1,7 @@
 use std::net::{IpAddr, Ipv4Addr};
 
-use bdk_kyoto::builder::LightClientBuilder;
+use bdk_kyoto::builder::{LightClient, LightClientBuilder, ServiceFlags, TrustedPeer};
 use bdk_kyoto::logger::TraceLogger;
-use bdk_kyoto::{ServiceFlags, TrustedPeer};
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::{KeychainKind, Wallet};
 
@@ -31,7 +30,11 @@ async fn main() -> anyhow::Result<()> {
         .create_wallet_no_persist()?;
 
     // The light client builder handles the logic of inserting the SPKs
-    let (node, mut client) = LightClientBuilder::new(&wallet)
+    let LightClient {
+        sender: _,
+        mut receiver,
+        node,
+    } = LightClientBuilder::new(&wallet)
         .scan_after(170_000)
         .peers(peers)
         .build()
@@ -50,7 +53,7 @@ async fn main() -> anyhow::Result<()> {
     // Sync and apply updates. We can do this a continual loop while the "application" is running.
     // Often this would occur on a separate thread than the underlying application user interface.
     loop {
-        if let Some(update) = client.update(&logger).await {
+        if let Some(update) = receiver.update(&logger).await {
             wallet.apply_update(update)?;
             tracing::info!("Tx count: {}", wallet.transactions().count());
             tracing::info!("Balance: {}", wallet.balance().total().to_sat());

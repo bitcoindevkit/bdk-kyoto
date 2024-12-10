@@ -1,14 +1,14 @@
 // #![allow(unused)]
+use bdk_kyoto::builder::LightClient;
 use std::net::IpAddr;
 use std::time::Duration;
 use tokio::task;
 use tokio::time;
 
 use bdk_kyoto::builder::LightClientBuilder;
+use bdk_kyoto::builder::TrustedPeer;
 #[cfg(feature = "callbacks")]
 use bdk_kyoto::logger::PrintLogger;
-use bdk_kyoto::NodeDefault;
-use bdk_kyoto::TrustedPeer;
 use bdk_testenv::bitcoincore_rpc::RpcApi;
 use bdk_testenv::bitcoind;
 use bdk_testenv::TestEnv;
@@ -40,10 +40,7 @@ async fn wait_for_height(env: &TestEnv, height: u32) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn init_node(
-    env: &TestEnv,
-    wallet: &bdk_wallet::Wallet,
-) -> anyhow::Result<(NodeDefault, bdk_kyoto::Client<KeychainKind>)> {
+fn init_node(env: &TestEnv, wallet: &bdk_wallet::Wallet) -> anyhow::Result<LightClient> {
     let peer = env.bitcoind.params.p2p_socket.unwrap();
     let ip: IpAddr = (*peer.ip()).into();
     let port = peer.port();
@@ -75,7 +72,11 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
     let addr = wallet.peek_address(KeychainKind::External, index).address;
 
     // build node/client
-    let (node, mut client) = init_node(&env, &wallet)?;
+    let LightClient {
+        sender,
+        mut receiver,
+        node,
+    } = init_node(&env, &wallet)?;
 
     // mine blocks
     let _hashes = env.mine_blocks(100, Some(miner.clone()))?;
@@ -91,7 +92,7 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
     task::spawn(async move { node.run().await });
     let logger = PrintLogger::new();
     // get update
-    let res = client.update(&logger).await.expect("should have update");
+    let res = receiver.update(&logger).await.expect("should have update");
     let FullScanResult {
         tx_update,
         chain_update,
@@ -114,7 +115,7 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
         [(KeychainKind::External, index)].into()
     );
 
-    client.shutdown().await?;
+    sender.shutdown().await?;
 
     Ok(())
 }
@@ -129,7 +130,11 @@ async fn update_handles_reorg() -> anyhow::Result<()> {
         .create_wallet_no_persist()?;
     let addr = wallet.peek_address(KeychainKind::External, 0).address;
 
-    let (node, mut client) = init_node(&env, &wallet)?;
+    let LightClient {
+        sender,
+        mut receiver,
+        node,
+    } = init_node(&env, &wallet)?;
 
     // mine blocks
     let miner = env
@@ -150,7 +155,7 @@ async fn update_handles_reorg() -> anyhow::Result<()> {
 
     // get update
     let logger = PrintLogger::new();
-    let res = client.update(&logger).await.expect("should have update");
+    let res = receiver.update(&logger).await.expect("should have update");
     let (anchor, anchor_txid) = *res.tx_update.anchors.iter().next().unwrap();
     assert_eq!(anchor.block_id.hash, blockhash);
     assert_eq!(anchor_txid, txid);
@@ -162,14 +167,14 @@ async fn update_handles_reorg() -> anyhow::Result<()> {
     wait_for_height(&env, 103).await?;
 
     // expect tx to confirm at same height but different blockhash
-    let res = client.update(&logger).await.expect("should have update");
+    let res = receiver.update(&logger).await.expect("should have update");
     let (anchor, anchor_txid) = *res.tx_update.anchors.iter().next().unwrap();
     assert_eq!(anchor_txid, txid);
     assert_eq!(anchor.block_id.height, 102);
     assert_ne!(anchor.block_id.hash, blockhash);
     assert_eq!(anchor.block_id.hash, new_blockhash);
 
-    client.shutdown().await?;
+    sender.shutdown().await?;
 
     Ok(())
 }

@@ -1,4 +1,4 @@
-//! Construct a [`NodeDefault`] and [`Client`] by using a reference to a [`Wallet`].
+//! Construct a [`LightClient`] by using a reference to a [`Wallet`].
 //!
 //! ## Details
 //!
@@ -13,8 +13,7 @@
 //! use std::time::Duration;
 //! use bdk_wallet::Wallet;
 //! use bdk_wallet::bitcoin::Network;
-//! use bdk_kyoto::TrustedPeer;
-//! use bdk_kyoto::builder::LightClientBuilder;
+//! use bdk_kyoto::builder::{LightClientBuilder, LightClient, TrustedPeer};
 //! use bdk_kyoto::logger::PrintLogger;
 //!
 //! #[tokio::main]
@@ -30,7 +29,7 @@
 //!         .network(Network::Signet)
 //!         .create_wallet_no_persist()?;
 //!
-//!     let (node, mut client) = LightClientBuilder::new(&wallet)
+//!     let LightClient { sender, receiver, node } = LightClientBuilder::new(&wallet)
 //!         // When recovering a user's wallet, specify a height to start at
 //!         .scan_after(200_000)
 //!         // A node may handle mutliple connections
@@ -49,14 +48,28 @@ use std::{collections::HashSet, path::PathBuf, time::Duration};
 
 use bdk_chain::local_chain::MissingGenesisError;
 use bdk_wallet::{KeychainKind, Wallet};
-use kyoto::{
-    chain::checkpoints::HeaderCheckpoint, core::builder::NodeDefault,
-    db::error::SqlInitializationError, NodeBuilder, ScriptBuf, TrustedPeer,
+use kyoto::core::builder::NodeDefault;
+use kyoto::ClientSender as EventSender;
+use kyoto::NodeBuilder;
+pub use kyoto::{
+    db::error::SqlInitializationError, AddrV2, HeaderCheckpoint, ScriptBuf, ServiceFlags,
+    TrustedPeer,
 };
 
-use crate::Client;
+use crate::EventReceiver;
 
 const RECOMMENDED_PEERS: u8 = 2;
+
+#[derive(Debug)]
+/// A node and associated structs to send and receive events to and from the node.
+pub struct LightClient {
+    /// Send events to a running node (i.e. broadcast a transaction).
+    pub sender: EventSender,
+    /// Receive wallet updates from a node.
+    pub receiver: EventReceiver<KeychainKind>,
+    /// The underlying node that must be run to fetch blocks from peers.
+    pub node: NodeDefault,
+}
 
 #[derive(Debug)]
 /// Construct a light client from a [`Wallet`] reference.
@@ -114,7 +127,7 @@ impl<'a> LightClientBuilder<'a> {
     }
 
     /// Build a light client node and a client to interact with the node.
-    pub fn build(self) -> Result<(NodeDefault, Client<KeychainKind>), BuilderError> {
+    pub fn build(self) -> Result<LightClient, BuilderError> {
         let network = self.wallet.network();
         let mut node_builder = NodeBuilder::new(network);
         if let Some(whitelist) = self.peers {
@@ -169,12 +182,17 @@ impl<'a> LightClientBuilder<'a> {
             }
         }
         let (node, kyoto_client) = node_builder.add_scripts(spks).build_node()?;
-        let client = Client::from_index(
+        let (sender, receiver) = kyoto_client.split();
+        let event_receiver = EventReceiver::from_index(
             self.wallet.local_chain().tip(),
             self.wallet.spk_index(),
-            kyoto_client,
+            receiver,
         )?;
-        Ok((node, client))
+        Ok(LightClient {
+            sender,
+            receiver: event_receiver,
+            node,
+        })
     }
 }
 
