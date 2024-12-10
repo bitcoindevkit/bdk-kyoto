@@ -166,7 +166,7 @@ use bdk_chain::{
     IndexedTxGraph,
 };
 use bdk_chain::{ConfirmationBlockTime, TxUpdate};
-use kyoto::{IndexedBlock, NodeMessage, SyncUpdate, TxBroadcast};
+use kyoto::{IndexedBlock, NodeMessage, SyncUpdate};
 
 #[cfg(all(feature = "wallet", feature = "rusqlite"))]
 pub mod builder;
@@ -176,9 +176,10 @@ pub mod logger;
 pub use bdk_chain::local_chain::MissingGenesisError;
 #[cfg(feature = "rusqlite")]
 pub use kyoto::core::builder::NodeDefault;
+pub use kyoto::ClientSender as KyotoClient;
 pub use kyoto::{
     ClientError, HeaderCheckpoint, Node, NodeBuilder, NodeState, Receiver, ScriptBuf, ServiceFlags,
-    Transaction, TrustedPeer, TxBroadcastPolicy, Txid, Warning, MAINNET_HEADER_CP,
+    Transaction, TrustedPeer, TxBroadcast, TxBroadcastPolicy, Txid, Warning, MAINNET_HEADER_CP,
     SIGNET_HEADER_CP,
 };
 #[cfg(feature = "events")]
@@ -413,12 +414,6 @@ where
         self.client.shutdown().await
     }
 
-    /// Get a structure to broadcast transactions. Useful for broadcasting transactions and updating
-    /// concurrently.
-    pub fn transaction_broadcaster(&self) -> TransactionBroadcaster {
-        TransactionBroadcaster::new(self.client.sender())
-    }
-
     /// Generate a new channel [`Receiver`] to get [`NodeMessage`] directly, instead of using
     /// the existing client APIs.
     ///
@@ -432,32 +427,10 @@ where
     pub fn channel_receiver(&self) -> Receiver<NodeMessage> {
         self.client.receiver()
     }
-}
 
-/// Type that broadcasts transactions to the network.
-#[derive(Debug)]
-pub struct TransactionBroadcaster {
-    sender: kyoto::ClientSender,
-}
-
-impl TransactionBroadcaster {
-    /// Create a new transaction broadcaster with the given client `sender`.
-    fn new(sender: kyoto::ClientSender) -> Self {
-        Self { sender }
-    }
-
-    /// Broadcast a [`Transaction`] with a [`TxBroadcastPolicy`] strategy.
-    pub async fn broadcast(
-        &mut self,
-        tx: &Transaction,
-        policy: TxBroadcastPolicy,
-    ) -> Result<(), ClientError> {
-        self.sender
-            .broadcast_tx(TxBroadcast {
-                tx: tx.clone(),
-                broadcast_policy: policy,
-            })
-            .await
+    /// Clone the internal light client to communicate with the underlying node.
+    pub fn inner_client(&self) -> KyotoClient {
+        self.client.sender()
     }
 }
 
