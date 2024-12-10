@@ -173,6 +173,7 @@ pub mod builder;
 #[cfg(feature = "callbacks")]
 pub mod logger;
 
+pub use bdk_chain::bitcoin::FeeRate;
 pub use bdk_chain::local_chain::MissingGenesisError;
 #[cfg(feature = "rusqlite")]
 pub use kyoto::core::builder::NodeDefault;
@@ -195,6 +196,8 @@ pub struct Client<K> {
     chain: local_chain::LocalChain,
     // receive graph
     graph: IndexedTxGraph<ConfirmationBlockTime, KeychainTxOutIndex<K>>,
+    // the network minimum to broadcast a transaction
+    min_broadcast_fee: FeeRate,
 }
 
 impl<K> Client<K>
@@ -213,6 +216,7 @@ where
             receiver,
             chain: LocalChain::from_tip(cp)?,
             graph: IndexedTxGraph::new(index.clone()),
+            min_broadcast_fee: FeeRate::BROADCAST_MIN,
         })
     }
 
@@ -255,6 +259,11 @@ where
                         chain_changeset.insert(height, Some(header.block_hash()));
                     });
                     break;
+                }
+                NodeMessage::FeeFilter(fee_filter) => {
+                    if self.min_broadcast_fee < fee_filter {
+                        self.min_broadcast_fee = fee_filter;
+                    }
                 }
                 _ => (),
             }
@@ -377,6 +386,11 @@ where
                 NodeMessage::TxBroadcastFailure(failure_payload) => {
                     return Some(Event::TxFailed(failure_payload));
                 }
+                NodeMessage::FeeFilter(fee_filter) => {
+                    if self.min_broadcast_fee < fee_filter {
+                        self.min_broadcast_fee = fee_filter;
+                    }
+                }
                 _ => continue,
             }
         }
@@ -395,6 +409,11 @@ where
                 broadcast_policy: policy,
             })
             .await
+    }
+
+    /// The minimum fee required for a transaction to propagate to the connected peers.
+    pub fn broadcast_minimum(&self) -> FeeRate {
+        self.min_broadcast_fee
     }
 
     /// Add more scripts to the node. For example, a user may reveal a Bitcoin address to receive a
