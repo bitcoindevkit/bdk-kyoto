@@ -66,6 +66,10 @@ async fn main() -> anyhow::Result<()> {
             tracing::info!("Local chain tip: {}", wallet.local_chain().tip().height());
             let next = wallet.peek_address(KeychainKind::External, last_revealed + 1);
             tracing::info!("Next receiving address: {next}");
+            tracing::info!(
+                "Broadcast minimum fee rate: {}",
+                receiver.broadcast_minimum()
+            );
         }
     }
 }
