@@ -1,4 +1,4 @@
-use bdk_kyoto::builder::LightClientBuilder;
+use bdk_kyoto::builder::{LightClient, LightClientBuilder};
 use bdk_kyoto::{Event, LogLevel};
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::Wallet;
@@ -16,7 +16,11 @@ async fn main() -> anyhow::Result<()> {
         .create_wallet_no_persist()?;
 
     // The light client builder handles the logic of inserting the SPKs
-    let (node, mut client) = LightClientBuilder::new(&wallet)
+    let LightClient {
+        sender: _,
+        mut receiver,
+        node,
+    } = LightClientBuilder::new(&wallet)
         .scan_after(170_000)
         .build()
         .unwrap();
@@ -24,7 +28,7 @@ async fn main() -> anyhow::Result<()> {
     tokio::task::spawn(async move { node.run().await });
 
     loop {
-        if let Some(event) = client.next_event(LogLevel::Info).await {
+        if let Some(event) = receiver.next_event(LogLevel::Info).await {
             match event {
                 Event::Log(log) => println!("INFO: {log}"),
                 Event::Warning(warning) => println!("WARNING: {warning}"),

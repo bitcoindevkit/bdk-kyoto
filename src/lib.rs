@@ -24,7 +24,7 @@
 //! # const CHANGE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/1/*)";
 //! use bdk_wallet::Wallet;
 //! use bdk_wallet::bitcoin::Network;
-//! use bdk_kyoto::builder::LightClientBuilder;
+//! use bdk_kyoto::builder::{LightClientBuilder, LightClient};
 //! use bdk_kyoto::logger::PrintLogger;
 //!
 //! #[tokio::main]
@@ -33,13 +33,13 @@
 //!         .network(Network::Signet)
 //!         .create_wallet_no_persist()?;
 //!
-//!     let (node, mut client) = LightClientBuilder::new(&wallet).build()?;
+//!     let LightClient { sender, mut receiver, node } = LightClientBuilder::new(&wallet).build()?;
 //!
 //!     tokio::task::spawn(async move { node.run().await });
 //!
 //!     let logger = PrintLogger::new();
 //!     loop {
-//!         if let Some(update) = client.update(&logger).await {
+//!         if let Some(update) = receiver.update(&logger).await {
 //!             wallet.apply_update(update)?;
 //!             return Ok(());
 //!         }
@@ -53,7 +53,7 @@
 //! ```no_run
 //! # const RECEIVE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/0/*)";
 //! # const CHANGE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/1/*)";
-//! # use bdk_kyoto::builder::LightClientBuilder;
+//! # use bdk_kyoto::builder::{LightClientBuilder, LightClient};
 //! # use bdk_kyoto::{Event, LogLevel};
 //! # use bdk_wallet::bitcoin::Network;
 //! # use bdk_wallet::Wallet;
@@ -63,12 +63,12 @@
 //!         .network(Network::Signet)
 //!         .create_wallet_no_persist()?;
 //!
-//!     let (node, mut client) = LightClientBuilder::new(&wallet).build()?;
+//!     let LightClient { sender, mut receiver, node } = LightClientBuilder::new(&wallet).build()?;
 //!
 //!     tokio::task::spawn(async move { node.run().await });
 //!
 //!     loop {
-//!         if let Some(event) = client.next_event(LogLevel::Info).await {
+//!         if let Some(event) = receiver.next_event(LogLevel::Info).await {
 //!             match event {
 //!                 Event::ScanResponse(full_scan_result) => {
 //!                     wallet.apply_update(full_scan_result).unwrap();
@@ -81,7 +81,7 @@
 //! ```
 //!
 //! Custom wallet implementations may still take advantage of BDK-Kyoto, however building the
-//! [`Client`] will involve configuring Kyoto directly.
+//! [`EventReceiver`] will involve configuring Kyoto directly.
 //!
 //! ```no_run
 //! # const RECEIVE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/0/*)";
@@ -96,8 +96,9 @@
 //! #    keychain_txout::KeychainTxOutIndex, local_chain::LocalChain, miniscript::Descriptor, FullTxOut,
 //! #    IndexedTxGraph, SpkIterator, Merge,
 //! # };
-//! use bdk_kyoto::{Client, TrustedPeer, NodeBuilder, HeaderCheckpoint};
+//! use bdk_kyoto::EventReceiver;
 //! use bdk_kyoto::logger::PrintLogger;
+//! use bdk_kyoto::kyoto::{TrustedPeer, NodeBuilder, HeaderCheckpoint};
 //!
 //! const TARGET_INDEX: u32 = 20;
 //!
@@ -137,7 +138,8 @@
 //!         .build_node()
 //!         .unwrap();
 //!
-//!     let mut client = Client::from_index(chain.tip(), &graph.index, kyoto_client).unwrap();
+//!     let (sender, receiver) = kyoto_client.split();
+//!     let mut client = EventReceiver::from_index(chain.tip(), &graph.index, receiver).unwrap();
 //!
 //!     tokio::task::spawn(async move { node.run().await });
 //!
@@ -149,13 +151,12 @@
 //!             .index
 //!             .reveal_to_target_multi(&update.last_active_indices);
 //!     }
-//!     client.shutdown().await?;
+//!     sender.shutdown().await?;
 //!     Ok(())
 //! }
 //! ```
 
 #![warn(missing_docs)]
-
 use core::fmt;
 use std::collections::BTreeMap;
 
@@ -166,29 +167,30 @@ use bdk_chain::{
     IndexedTxGraph,
 };
 use bdk_chain::{ConfirmationBlockTime, TxUpdate};
-use kyoto::{IndexedBlock, NodeMessage, SyncUpdate, TxBroadcast};
+
+pub use bdk_chain::local_chain::MissingGenesisError;
+
+pub extern crate kyoto;
+
+#[cfg(feature = "rusqlite")]
+pub use kyoto::core::builder::NodeDefault;
+#[cfg(feature = "events")]
+pub use kyoto::{DisconnectedHeader, FailurePayload};
+
+#[cfg(all(feature = "wallet", feature = "rusqlite"))]
+pub use kyoto::ClientSender as EventSender;
+use kyoto::{IndexedBlock, NodeMessage};
+pub use kyoto::{NodeState, Receiver, SyncUpdate, TxBroadcast, TxBroadcastPolicy, Txid, Warning};
 
 #[cfg(all(feature = "wallet", feature = "rusqlite"))]
 pub mod builder;
 #[cfg(feature = "callbacks")]
 pub mod logger;
 
-pub use bdk_chain::local_chain::MissingGenesisError;
-#[cfg(feature = "rusqlite")]
-pub use kyoto::core::builder::NodeDefault;
-pub use kyoto::{
-    ClientError, HeaderCheckpoint, Node, NodeBuilder, NodeState, Receiver, ScriptBuf, ServiceFlags,
-    Transaction, TrustedPeer, TxBroadcastPolicy, Txid, Warning, MAINNET_HEADER_CP,
-    SIGNET_HEADER_CP,
-};
-#[cfg(feature = "events")]
-pub use kyoto::{DisconnectedHeader, FailurePayload};
-
-/// A compact block filter client.
+/// Interpret events from a node that is running to apply
+/// updates to an underlying wallet.
 #[derive(Debug)]
-pub struct Client<K> {
-    // client
-    client: kyoto::Client,
+pub struct EventReceiver<K> {
     // channel receiver
     receiver: kyoto::Receiver<NodeMessage>,
     // changes to local chain
@@ -197,19 +199,17 @@ pub struct Client<K> {
     graph: IndexedTxGraph<ConfirmationBlockTime, KeychainTxOutIndex<K>>,
 }
 
-impl<K> Client<K>
+impl<K> EventReceiver<K>
 where
     K: fmt::Debug + Clone + Ord,
 {
-    /// Build a light client from a [`KeychainTxOutIndex`] and [`CheckPoint`].
+    /// Build a light client event handler from a [`KeychainTxOutIndex`] and [`CheckPoint`].
     pub fn from_index(
         cp: CheckPoint,
         index: &KeychainTxOutIndex<K>,
-        client: kyoto::Client,
+        receiver: Receiver<NodeMessage>,
     ) -> Result<Self, MissingGenesisError> {
-        let receiver = client.receiver();
         Ok(Self {
-            client,
             receiver,
             chain: LocalChain::from_tip(cp)?,
             graph: IndexedTxGraph::new(index.clone()),
@@ -218,10 +218,10 @@ where
 
     /// Return the most recent update from the node once it has synced to the network's tip.
     /// This may take a significant portion of time during wallet recoveries or dormant wallets.
-    /// Note that you may call this method in a loop as long as the [`Node`] is running.
+    /// Note that you may call this method in a loop as long as the node is running.
     ///
     /// A reference to a [`NodeEventHandler`] is required, which handles events emitted from a
-    /// running [`Node`]. Production applications should define how the application handles
+    /// running node. Production applications should define how the application handles
     /// these events and displays them to end users.
     #[cfg(feature = "callbacks")]
     pub async fn update(&mut self, logger: &dyn NodeEventHandler) -> Option<FullScanResult<K>> {
@@ -382,90 +382,13 @@ where
         }
         None
     }
-
-    /// Broadcast a [`Transaction`] with a [`TxBroadcastPolicy`] strategy.
-    pub async fn broadcast(
-        &self,
-        tx: Transaction,
-        policy: TxBroadcastPolicy,
-    ) -> Result<(), ClientError> {
-        self.client
-            .broadcast_tx(TxBroadcast {
-                tx,
-                broadcast_policy: policy,
-            })
-            .await
-    }
-
-    /// Add more scripts to the node. For example, a user may reveal a Bitcoin address to receive a
-    /// payment, so this script should be added to the [`Node`].
-    ///
-    /// ## Note
-    ///
-    /// When using the [`LightClientBuidler`](crate::builder), the wallet lookahead will be used
-    /// to peek ahead and scan for additional scripts.
-    pub async fn add_script(&self, script: impl Into<ScriptBuf>) -> Result<(), ClientError> {
-        self.client.add_script(script).await
-    }
-
-    /// Shutdown the node.
-    pub async fn shutdown(&self) -> Result<(), ClientError> {
-        self.client.shutdown().await
-    }
-
-    /// Get a structure to broadcast transactions. Useful for broadcasting transactions and updating
-    /// concurrently.
-    pub fn transaction_broadcaster(&self) -> TransactionBroadcaster {
-        TransactionBroadcaster::new(self.client.sender())
-    }
-
-    /// Generate a new channel [`Receiver`] to get [`NodeMessage`] directly, instead of using
-    /// the existing client APIs.
-    ///
-    /// ## Performance
-    ///
-    /// When generating a new channel [`Receiver`], a message must be consumed by _all_ [`Receiver`]
-    /// before it is removed from memory. For channels that process data slowly, this can cause
-    /// messages to build up in the channel, and may even cause errors if too many messages
-    /// are held in the channel at one time. For the best results, applications may not want to call
-    /// this method at all, or only a few times.
-    pub fn channel_receiver(&self) -> Receiver<NodeMessage> {
-        self.client.receiver()
-    }
-}
-
-/// Type that broadcasts transactions to the network.
-#[derive(Debug)]
-pub struct TransactionBroadcaster {
-    sender: kyoto::ClientSender,
-}
-
-impl TransactionBroadcaster {
-    /// Create a new transaction broadcaster with the given client `sender`.
-    fn new(sender: kyoto::ClientSender) -> Self {
-        Self { sender }
-    }
-
-    /// Broadcast a [`Transaction`] with a [`TxBroadcastPolicy`] strategy.
-    pub async fn broadcast(
-        &mut self,
-        tx: &Transaction,
-        policy: TxBroadcastPolicy,
-    ) -> Result<(), ClientError> {
-        self.sender
-            .broadcast_tx(TxBroadcast {
-                tx: tx.clone(),
-                broadcast_policy: policy,
-            })
-            .await
-    }
 }
 
 /// Handle dialog and state changes from a node with some arbitrary behavior.
 /// The primary purpose of this trait is not to respond to events by persisting changes,
 /// or acting on the underlying wallet. Instead, this trait should be used to drive changes in user
 /// interface behavior or keep a simple log. Relevant events that effect on the wallet are handled
-/// automatically in [`Client::update`](Client).
+/// automatically in [`EventReceiver::update`](EventReceiver).
 #[cfg(feature = "callbacks")]
 pub trait NodeEventHandler: Send + Sync + fmt::Debug + 'static {
     /// Make use of some message the node has sent.
@@ -513,7 +436,7 @@ pub enum Event<K: fmt::Debug + Clone + Ord> {
     /// ## Note
     ///
     /// No action is required from the developer, as these events are already
-    /// handled within the [`Client`]. This event is to inform the user of
+    /// handled within the [`EventReceiver`]. This event is to inform the user of
     /// such an event.
     BlocksDisconnected(Vec<DisconnectedHeader>),
 }

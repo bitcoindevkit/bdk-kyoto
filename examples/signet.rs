@@ -10,8 +10,9 @@ use bdk_chain::{
     keychain_txout::KeychainTxOutIndex, local_chain::LocalChain, miniscript::Descriptor, FullTxOut,
     IndexedTxGraph, SpkIterator,
 };
+use bdk_kyoto::kyoto::{HeaderCheckpoint, NodeBuilder};
 use bdk_kyoto::logger::PrintLogger;
-use bdk_kyoto::{Client, HeaderCheckpoint, NodeBuilder};
+use bdk_kyoto::EventReceiver;
 
 const TARGET_INDEX: u32 = 20;
 
@@ -61,7 +62,8 @@ async fn main() -> anyhow::Result<()> {
         ))
         .num_required_peers(2)
         .build_node()?;
-    let mut client = Client::from_index(chain.tip(), &graph.index, client)?;
+    let (sender, receiver) = client.split();
+    let mut event_receiver = EventReceiver::from_index(chain.tip(), &graph.index, receiver)?;
 
     // Run the node
     if !node.is_running() {
@@ -70,7 +72,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Sync and apply updates
     let logger = PrintLogger::new();
-    if let Some(update) = client.update(&logger).await {
+    if let Some(update) = event_receiver.update(&logger).await {
         let _ = chain.apply_update(update.chain_update.unwrap())?;
         let _ = graph.apply_update(update.tx_update);
         let _ = graph
@@ -79,7 +81,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Shutdown
-    client.shutdown().await?;
+    sender.shutdown().await?;
 
     let cp = chain.tip();
     let index = &graph.index;
