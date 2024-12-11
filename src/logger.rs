@@ -70,7 +70,7 @@ impl NodeEventHandler for PrintLogger {
         println!("Transaction sent: {txid}");
     }
 
-    fn tx_failed(&self, txid: Txid) {
+    fn tx_failed(&self, txid: Txid, _reject_reason: Option<String>) {
         println!("Transaction failed: {txid}");
     }
 
@@ -126,7 +126,7 @@ impl NodeEventHandler for TraceLogger {
         tracing::info!("Transaction sent: {txid}")
     }
 
-    fn tx_failed(&self, txid: Txid) {
+    fn tx_failed(&self, txid: Txid, _reject_reason: Option<String>) {
         tracing::info!("Transaction failed: {txid}")
     }
 
@@ -151,7 +151,7 @@ impl NodeEventHandler for () {
     fn state_changed(&self, _state: NodeState) {}
     fn connections_met(&self) {}
     fn tx_sent(&self, _txid: Txid) {}
-    fn tx_failed(&self, _txid: Txid) {}
+    fn tx_failed(&self, _txid: Txid, _reject_reason: Option<String>) {}
     fn blocks_disconnected(&self, _blocks: Vec<u32>) {}
     fn synced(&self, _tip: u32) {}
 }
