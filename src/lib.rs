@@ -179,7 +179,7 @@ pub use kyoto::{DisconnectedHeader, FailurePayload};
 
 #[cfg(all(feature = "wallet", feature = "rusqlite"))]
 pub use kyoto::ClientSender as EventSender;
-use kyoto::{IndexedBlock, NodeMessage};
+use kyoto::{IndexedBlock, NodeMessage, RejectReason};
 pub use kyoto::{NodeState, Receiver, SyncUpdate, TxBroadcast, TxBroadcastPolicy, Txid, Warning};
 
 #[cfg(all(feature = "wallet", feature = "rusqlite"))]
@@ -288,7 +288,9 @@ where
             NodeMessage::TxSent(t) => {
                 logger.tx_sent(*t);
             }
-            NodeMessage::TxBroadcastFailure(r) => logger.tx_failed(r.txid),
+            NodeMessage::TxBroadcastFailure(r) => {
+                logger.tx_failed(r.txid, r.reason.map(|reason| reason.into_string()))
+            }
             NodeMessage::ConnectionsMet => logger.connections_met(),
             _ => (),
         }
@@ -402,7 +404,7 @@ pub trait NodeEventHandler: Send + Sync + fmt::Debug + 'static {
     /// A transaction was broadcast to at least one peer.
     fn tx_sent(&self, txid: Txid);
     /// A transaction was rejected or failed to broadcast.
-    fn tx_failed(&self, txid: Txid);
+    fn tx_failed(&self, txid: Txid, reject_reason: Option<String>);
     /// A list of block heights were reorganized
     fn blocks_disconnected(&self, blocks: Vec<u32>);
     /// The node has synced to the height of the connected peers.
@@ -450,4 +452,24 @@ pub enum LogLevel {
     Info,
     /// Omit info messages and only receive warnings.
     Warning,
+}
+
+trait StringExt {
+    fn into_string(self) -> String;
+}
+
+impl StringExt for RejectReason {
+    fn into_string(self) -> String {
+        let message = match self {
+            RejectReason::Malformed => "Message could not be decoded.",
+            RejectReason::Invalid => "Transaction was invalid for some reason.",
+            RejectReason::Obsolete => "Client version is no longer supported.",
+            RejectReason::Duplicate => "Duplicate version message received.",
+            RejectReason::NonStandard => "Transaction was nonstandard.",
+            RejectReason::Dust => "One or more outputs are below the dust threshold.",
+            RejectReason::Fee => "Transaction does not have enough fee to be mined.",
+            RejectReason::Checkpoint => "Inconsistent with compiled checkpoint.",
+        };
+        message.into()
+    }
 }
