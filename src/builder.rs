@@ -13,8 +13,9 @@
 //! use std::time::Duration;
 //! use bdk_wallet::Wallet;
 //! use bdk_wallet::bitcoin::Network;
-//! use bdk_kyoto::builder::{LightClientBuilder, LightClient, TrustedPeer};
+//! use bdk_kyoto::builder::{LightClientBuilder, TrustedPeer};
 //! use bdk_kyoto::logger::PrintLogger;
+//! use bdk_kyoto::LightClient;
 //!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {
@@ -48,28 +49,15 @@ use std::{collections::HashSet, path::PathBuf, time::Duration};
 
 use bdk_chain::local_chain::MissingGenesisError;
 use bdk_wallet::{KeychainKind, Wallet};
-use kyoto::core::builder::NodeDefault;
-use kyoto::ClientSender as EventSender;
 use kyoto::NodeBuilder;
 pub use kyoto::{
     db::error::SqlInitializationError, AddrV2, HeaderCheckpoint, ScriptBuf, ServiceFlags,
     TrustedPeer,
 };
 
-use crate::EventReceiver;
+use crate::{EventReceiver, LightClient};
 
 const RECOMMENDED_PEERS: u8 = 2;
-
-#[derive(Debug)]
-/// A node and associated structs to send and receive events to and from the node.
-pub struct LightClient {
-    /// Send events to a running node (i.e. broadcast a transaction).
-    pub sender: EventSender,
-    /// Receive wallet updates from a node.
-    pub receiver: EventReceiver<KeychainKind>,
-    /// The underlying node that must be run to fetch blocks from peers.
-    pub node: NodeDefault,
-}
 
 #[derive(Debug)]
 /// Construct a light client from a [`Wallet`] reference.

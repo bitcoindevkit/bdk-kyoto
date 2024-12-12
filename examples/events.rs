@@ -1,5 +1,5 @@
-use bdk_kyoto::builder::{LightClient, LightClientBuilder};
-use bdk_kyoto::{Event, LogLevel};
+use bdk_kyoto::builder::LightClientBuilder;
+use bdk_kyoto::{Event, LightClient, LogLevel};
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::Wallet;
 

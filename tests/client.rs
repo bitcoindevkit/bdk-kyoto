@@ -1,5 +1,5 @@
 // #![allow(unused)]
-use bdk_kyoto::builder::LightClient;
+use bdk_kyoto::LightClient;
 use std::net::IpAddr;
 use std::time::Duration;
 use tokio::task;
@@ -13,7 +13,7 @@ use bdk_testenv::bitcoincore_rpc::RpcApi;
 use bdk_testenv::bitcoind;
 use bdk_testenv::TestEnv;
 use bdk_wallet::bitcoin::{Amount, Network};
-use bdk_wallet::chain::spk_client::FullScanResult;
+use bdk_wallet::chain::spk_client::FullScanResponse;
 use bdk_wallet::CreateParams;
 use bdk_wallet::KeychainKind;
 
@@ -93,7 +93,7 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
     let logger = PrintLogger::new();
     // get update
     let res = receiver.update(&logger).await.expect("should have update");
-    let FullScanResult {
+    let FullScanResponse {
         tx_update,
         chain_update,
         last_active_indices,

@@ -24,8 +24,9 @@
 //! # const CHANGE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/1/*)";
 //! use bdk_wallet::Wallet;
 //! use bdk_wallet::bitcoin::Network;
-//! use bdk_kyoto::builder::{LightClientBuilder, LightClient};
+//! use bdk_kyoto::builder::LightClientBuilder;
 //! use bdk_kyoto::logger::PrintLogger;
+//! use bdk_kyoto::LightClient;
 //!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {
@@ -53,8 +54,8 @@
 //! ```no_run
 //! # const RECEIVE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/0/*)";
 //! # const CHANGE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/1/*)";
-//! # use bdk_kyoto::builder::{LightClientBuilder, LightClient};
-//! # use bdk_kyoto::{Event, LogLevel};
+//! # use bdk_kyoto::builder::LightClientBuilder;
+//! # use bdk_kyoto::{Event, LogLevel, LightClient};
 //! # use bdk_wallet::bitcoin::Network;
 //! # use bdk_wallet::Wallet;
 //! #[tokio::main]
@@ -163,7 +164,7 @@ use std::collections::BTreeMap;
 use bdk_chain::{
     keychain_txout::KeychainTxOutIndex,
     local_chain::{self, CheckPoint, LocalChain},
-    spk_client::FullScanResult,
+    spk_client::FullScanResponse,
     IndexedTxGraph,
 };
 use bdk_chain::{ConfirmationBlockTime, TxUpdate};
@@ -173,12 +174,13 @@ pub use bdk_chain::local_chain::MissingGenesisError;
 
 pub extern crate kyoto;
 
+#[cfg(feature = "wallet")]
+use bdk_wallet::KeychainKind;
 #[cfg(feature = "rusqlite")]
 pub use kyoto::core::builder::NodeDefault;
 #[cfg(feature = "events")]
 pub use kyoto::{DisconnectedHeader, FailurePayload};
 
-#[cfg(all(feature = "wallet", feature = "rusqlite"))]
 pub use kyoto::ClientSender as EventSender;
 use kyoto::{IndexedBlock, NodeMessage, RejectReason};
 pub use kyoto::{NodeState, Receiver, SyncUpdate, TxBroadcast, TxBroadcastPolicy, Txid, Warning};
@@ -187,6 +189,18 @@ pub use kyoto::{NodeState, Receiver, SyncUpdate, TxBroadcast, TxBroadcastPolicy,
 pub mod builder;
 #[cfg(feature = "callbacks")]
 pub mod logger;
+
+#[cfg(feature = "wallet")]
+#[derive(Debug)]
+/// A node and associated structs to send and receive events to and from the node.
+pub struct LightClient {
+    /// Send events to a running node (i.e. broadcast a transaction).
+    pub sender: EventSender,
+    /// Receive wallet updates from a node.
+    pub receiver: EventReceiver<KeychainKind>,
+    /// The underlying node that must be run to fetch blocks from peers.
+    pub node: NodeDefault,
+}
 
 /// Interpret events from a node that is running to apply
 /// updates to an underlying wallet.
@@ -228,7 +242,7 @@ where
     /// running node. Production applications should define how the application handles
     /// these events and displays them to end users.
     #[cfg(feature = "callbacks")]
-    pub async fn update(&mut self, logger: &dyn NodeEventHandler) -> Option<FullScanResult<K>> {
+    pub async fn update(&mut self, logger: &dyn NodeEventHandler) -> Option<FullScanResponse<K>> {
         let mut chain_changeset = BTreeMap::new();
         while let Ok(message) = self.receiver.recv().await {
             self.log(&message, logger);
@@ -307,12 +321,12 @@ where
 
     // When the client is believed to have synced to the chain tip of most work,
     // we can return a wallet update.
-    fn get_scan_response(&mut self) -> FullScanResult<K> {
+    fn get_scan_response(&mut self) -> FullScanResponse<K> {
         let tx_update = TxUpdate::from(self.graph.graph().clone());
         let graph = core::mem::take(&mut self.graph);
         let last_active_indices = graph.index.last_used_indices();
         self.graph = IndexedTxGraph::new(graph.index);
-        FullScanResult {
+        FullScanResponse {
             tx_update,
             last_active_indices,
             chain_update: Some(self.chain.tip()),
@@ -451,7 +465,7 @@ pub enum Event<K: fmt::Debug + Clone + Ord> {
     ///
     /// This event will be emitted every time a new block is found while the node
     /// is running and is connected to peers.
-    ScanResponse(FullScanResult<K>),
+    ScanResponse(FullScanResponse<K>),
     /// Blocks were reorganized from the chain of most work.
     ///
     /// ## Note
