@@ -1,7 +1,8 @@
 use std::net::{IpAddr, Ipv4Addr};
 
-use bdk_kyoto::builder::{LightClient, LightClientBuilder, ServiceFlags, TrustedPeer};
+use bdk_kyoto::builder::{LightClientBuilder, ServiceFlags, TrustedPeer};
 use bdk_kyoto::logger::TraceLogger;
+use bdk_kyoto::LightClient;
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::{KeychainKind, Wallet};
 
