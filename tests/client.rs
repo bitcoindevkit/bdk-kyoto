@@ -1,6 +1,7 @@
 // #![allow(unused)]
 use bdk_kyoto::LightClient;
 use std::net::IpAddr;
+use std::path::PathBuf;
 use std::time::Duration;
 use tokio::task;
 use tokio::time;
@@ -40,16 +41,19 @@ async fn wait_for_height(env: &TestEnv, height: u32) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn init_node(env: &TestEnv, wallet: &bdk_wallet::Wallet) -> anyhow::Result<LightClient> {
+fn init_node(
+    env: &TestEnv,
+    wallet: &bdk_wallet::Wallet,
+    tempdir: PathBuf,
+) -> anyhow::Result<LightClient> {
     let peer = env.bitcoind.params.p2p_socket.unwrap();
     let ip: IpAddr = (*peer.ip()).into();
     let port = peer.port();
     let mut peer = TrustedPeer::from_ip(ip);
     peer.port = Some(port);
-    let path = tempfile::tempdir()?.path().join("kyoto-data");
     Ok(LightClientBuilder::new(wallet)
         .peers(vec![peer])
-        .data_dir(path)
+        .data_dir(tempdir)
         .connections(1)
         .build()?)
 }
@@ -72,11 +76,12 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
     let addr = wallet.peek_address(KeychainKind::External, index).address;
 
     // build node/client
+    let tempdir = tempfile::tempdir()?.path().join("kyoto-data");
     let LightClient {
         sender,
         mut receiver,
         node,
-    } = init_node(&env, &wallet)?;
+    } = init_node(&env, &wallet, tempdir)?;
 
     // mine blocks
     let _hashes = env.mine_blocks(100, Some(miner.clone()))?;
@@ -125,16 +130,17 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
 async fn update_handles_reorg() -> anyhow::Result<()> {
     let env = testenv()?;
 
-    let wallet = CreateParams::new(EXTERNAL_DESCRIPTOR, INTERNAL_DESCRIPTOR)
+    let mut wallet = CreateParams::new(EXTERNAL_DESCRIPTOR, INTERNAL_DESCRIPTOR)
         .network(Network::Regtest)
         .create_wallet_no_persist()?;
     let addr = wallet.peek_address(KeychainKind::External, 0).address;
 
+    let tempdir = tempfile::tempdir()?.path().join("kyoto-data");
     let LightClient {
         sender,
         mut receiver,
         node,
-    } = init_node(&env, &wallet)?;
+    } = init_node(&env, &wallet, tempdir)?;
 
     // mine blocks
     let miner = env
@@ -159,11 +165,12 @@ async fn update_handles_reorg() -> anyhow::Result<()> {
     let (anchor, anchor_txid) = *res.tx_update.anchors.iter().next().unwrap();
     assert_eq!(anchor.block_id.hash, blockhash);
     assert_eq!(anchor_txid, txid);
+    wallet.apply_update(res).unwrap();
 
     // reorg
     let hashes = env.reorg(1)?; // 102
     let new_blockhash = hashes[0];
-    _ = env.mine_blocks(1, Some(miner))?; // 103
+    _ = env.mine_blocks(2, Some(miner))?; // 103
     wait_for_height(&env, 103).await?;
 
     // expect tx to confirm at same height but different blockhash
@@ -173,6 +180,79 @@ async fn update_handles_reorg() -> anyhow::Result<()> {
     assert_eq!(anchor.block_id.height, 102);
     assert_ne!(anchor.block_id.hash, blockhash);
     assert_eq!(anchor.block_id.hash, new_blockhash);
+    wallet.apply_update(res).unwrap();
+
+    sender.shutdown().await?;
+
+    Ok(())
+}
+
+#[tokio::test]
+#[cfg(feature = "callbacks")]
+async fn update_handles_dormant_wallet() -> anyhow::Result<()> {
+    let env = testenv()?;
+
+    let mut wallet = CreateParams::new(EXTERNAL_DESCRIPTOR, INTERNAL_DESCRIPTOR)
+        .network(Network::Regtest)
+        .create_wallet_no_persist()?;
+    let addr = wallet.peek_address(KeychainKind::External, 0).address;
+
+    let tempdir = tempfile::tempdir()?.path().join("kyoto-data");
+    let LightClient {
+        sender,
+        mut receiver,
+        node,
+    } = init_node(&env, &wallet, tempdir.clone())?;
+
+    // mine blocks
+    let miner = env
+        .rpc_client()
+        .get_new_address(None, None)?
+        .assume_checked();
+    let _hashes = env.mine_blocks(100, Some(miner.clone()))?;
+    wait_for_height(&env, 101).await?;
+
+    // send tx
+    let amt = Amount::from_btc(0.21)?;
+    let txid = env.send(&addr, amt)?;
+    let hashes = env.mine_blocks(1, Some(miner.clone()))?;
+    let blockhash = hashes[0];
+    wait_for_height(&env, 102).await?;
+
+    task::spawn(async move { node.run().await });
+
+    // get update
+    let logger = PrintLogger::new();
+    let res = receiver.update(&logger).await.expect("should have update");
+    let (anchor, anchor_txid) = *res.tx_update.anchors.iter().next().unwrap();
+    assert_eq!(anchor.block_id.hash, blockhash);
+    assert_eq!(anchor_txid, txid);
+    wallet.apply_update(res).unwrap();
+
+    // shut down then reorg
+    sender.shutdown().await?;
+
+    let hashes = env.reorg(1)?; // 102
+    let new_blockhash = hashes[0];
+    _ = env.mine_blocks(20, Some(miner))?; // 122
+    wait_for_height(&env, 122).await?;
+
+    let LightClient {
+        sender,
+        mut receiver,
+        node,
+    } = init_node(&env, &wallet, tempdir)?;
+
+    task::spawn(async move { node.run().await });
+
+    // expect tx to confirm at same height but different blockhash
+    let res = receiver.update(&logger).await.expect("should have update");
+    let (anchor, anchor_txid) = *res.tx_update.anchors.iter().next().unwrap();
+    assert_eq!(anchor_txid, txid);
+    assert_eq!(anchor.block_id.height, 102);
+    assert_ne!(anchor.block_id.hash, blockhash);
+    assert_eq!(anchor.block_id.hash, new_blockhash);
+    wallet.apply_update(res).unwrap();
 
     sender.shutdown().await?;
 
