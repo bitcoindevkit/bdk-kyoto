@@ -125,7 +125,7 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
 async fn update_handles_reorg() -> anyhow::Result<()> {
     let env = testenv()?;
 
-    let wallet = CreateParams::new(EXTERNAL_DESCRIPTOR, INTERNAL_DESCRIPTOR)
+    let mut wallet = CreateParams::new(EXTERNAL_DESCRIPTOR, INTERNAL_DESCRIPTOR)
         .network(Network::Regtest)
         .create_wallet_no_persist()?;
     let addr = wallet.peek_address(KeychainKind::External, 0).address;
@@ -159,11 +159,12 @@ async fn update_handles_reorg() -> anyhow::Result<()> {
     let (anchor, anchor_txid) = *res.tx_update.anchors.iter().next().unwrap();
     assert_eq!(anchor.block_id.hash, blockhash);
     assert_eq!(anchor_txid, txid);
+    wallet.apply_update(res).unwrap();
 
     // reorg
     let hashes = env.reorg(1)?; // 102
     let new_blockhash = hashes[0];
-    _ = env.mine_blocks(1, Some(miner))?; // 103
+    _ = env.mine_blocks(2, Some(miner))?; // 103
     wait_for_height(&env, 103).await?;
 
     // expect tx to confirm at same height but different blockhash
@@ -173,6 +174,7 @@ async fn update_handles_reorg() -> anyhow::Result<()> {
     assert_eq!(anchor.block_id.height, 102);
     assert_ne!(anchor.block_id.hash, blockhash);
     assert_eq!(anchor.block_id.hash, new_blockhash);
+    wallet.apply_update(res).unwrap();
 
     sender.shutdown().await?;
 
