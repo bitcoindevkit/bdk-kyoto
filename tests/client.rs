@@ -1,6 +1,7 @@
 // #![allow(unused)]
 use bdk_kyoto::LightClient;
 use std::net::IpAddr;
+use std::path::PathBuf;
 use std::time::Duration;
 use tokio::task;
 use tokio::time;
@@ -40,16 +41,19 @@ async fn wait_for_height(env: &TestEnv, height: u32) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn init_node(env: &TestEnv, wallet: &bdk_wallet::Wallet) -> anyhow::Result<LightClient> {
+fn init_node(
+    env: &TestEnv,
+    wallet: &bdk_wallet::Wallet,
+    tempdir: PathBuf,
+) -> anyhow::Result<LightClient> {
     let peer = env.bitcoind.params.p2p_socket.unwrap();
     let ip: IpAddr = (*peer.ip()).into();
     let port = peer.port();
     let mut peer = TrustedPeer::from_ip(ip);
     peer.port = Some(port);
-    let path = tempfile::tempdir()?.path().join("kyoto-data");
     Ok(LightClientBuilder::new(wallet)
         .peers(vec![peer])
-        .data_dir(path)
+        .data_dir(tempdir)
         .connections(1)
         .build()?)
 }
@@ -72,11 +76,12 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
     let addr = wallet.peek_address(KeychainKind::External, index).address;
 
     // build node/client
+    let tempdir = tempfile::tempdir()?.path().join("kyoto-data");
     let LightClient {
         sender,
         mut receiver,
         node,
-    } = init_node(&env, &wallet)?;
+    } = init_node(&env, &wallet, tempdir)?;
 
     // mine blocks
     let _hashes = env.mine_blocks(100, Some(miner.clone()))?;
@@ -130,11 +135,12 @@ async fn update_handles_reorg() -> anyhow::Result<()> {
         .create_wallet_no_persist()?;
     let addr = wallet.peek_address(KeychainKind::External, 0).address;
 
+    let tempdir = tempfile::tempdir()?.path().join("kyoto-data");
     let LightClient {
         sender,
         mut receiver,
         node,
-    } = init_node(&env, &wallet)?;
+    } = init_node(&env, &wallet, tempdir)?;
 
     // mine blocks
     let miner = env
