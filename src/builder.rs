@@ -171,11 +171,7 @@ impl<'a> LightClientBuilder<'a> {
         }
         let (node, kyoto_client) = node_builder.add_scripts(spks).build_node()?;
         let (sender, receiver) = kyoto_client.split();
-        let event_receiver = EventReceiver::from_index(
-            self.wallet.local_chain().tip(),
-            self.wallet.spk_index(),
-            receiver,
-        )?;
+        let event_receiver = EventReceiver::from_index(network, self.wallet.spk_index(), receiver);
         Ok(LightClient {
             sender,
             receiver: event_receiver,

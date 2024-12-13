@@ -140,7 +140,7 @@
 //!         .unwrap();
 //!
 //!     let (sender, receiver) = kyoto_client.split();
-//!     let mut client = EventReceiver::from_index(chain.tip(), &graph.index, receiver).unwrap();
+//!     let mut client = EventReceiver::from_index(Network::Signet, &graph.index, receiver);
 //!
 //!     tokio::task::spawn(async move { node.run().await });
 //!
@@ -162,8 +162,9 @@ use core::fmt;
 use std::collections::BTreeMap;
 
 use bdk_chain::{
+    bitcoin::{constants::genesis_block, params::Params},
     keychain_txout::KeychainTxOutIndex,
-    local_chain::{self, CheckPoint, LocalChain},
+    local_chain::{self, LocalChain},
     spk_client::FullScanResponse,
     IndexedTxGraph,
 };
@@ -222,16 +223,17 @@ where
 {
     /// Build a light client event handler from a [`KeychainTxOutIndex`] and [`CheckPoint`].
     pub fn from_index(
-        cp: CheckPoint,
+        params: impl AsRef<Params>,
         index: &KeychainTxOutIndex<K>,
         receiver: Receiver<NodeMessage>,
-    ) -> Result<Self, MissingGenesisError> {
-        Ok(Self {
+    ) -> Self {
+        let (chain, _) = LocalChain::from_genesis_hash(genesis_block(params).block_hash());
+        Self {
             receiver,
-            chain: LocalChain::from_tip(cp)?,
+            chain,
             graph: IndexedTxGraph::new(index.clone()),
             min_broadcast_fee: FeeRate::BROADCAST_MIN,
-        })
+        }
     }
 
     /// Return the most recent update from the node once it has synced to the network's tip.

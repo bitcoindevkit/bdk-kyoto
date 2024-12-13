@@ -63,7 +63,7 @@ async fn main() -> anyhow::Result<()> {
         .num_required_peers(2)
         .build_node()?;
     let (sender, receiver) = client.split();
-    let mut event_receiver = EventReceiver::from_index(chain.tip(), &graph.index, receiver)?;
+    let mut event_receiver = EventReceiver::from_index(Network::Signet, &graph.index, receiver);
 
     // Run the node
     if !node.is_running() {
