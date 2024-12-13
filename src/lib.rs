@@ -34,7 +34,7 @@
 //!         .network(Network::Signet)
 //!         .create_wallet_no_persist()?;
 //!
-//!     let LightClient { sender, mut receiver, node } = LightClientBuilder::new(&wallet).build()?;
+//!     let LightClient { sender, mut receiver, node } = LightClientBuilder::new().build(&wallet)?;
 //!
 //!     tokio::task::spawn(async move { node.run().await });
 //!
@@ -64,7 +64,7 @@
 //!         .network(Network::Signet)
 //!         .create_wallet_no_persist()?;
 //!
-//!     let LightClient { sender, mut receiver, node } = LightClientBuilder::new(&wallet).build()?;
+//!     let LightClient { sender, mut receiver, node } = LightClientBuilder::new().build(&wallet)?;
 //!
 //!     tokio::task::spawn(async move { node.run().await });
 //!
