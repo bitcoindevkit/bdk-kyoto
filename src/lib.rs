@@ -189,6 +189,8 @@ pub use kyoto::{NodeState, Receiver, SyncUpdate, TxBroadcast, TxBroadcastPolicy,
 pub mod builder;
 #[cfg(feature = "callbacks")]
 pub mod logger;
+#[cfg(feature = "wallet")]
+pub mod multi;
 
 #[cfg(feature = "wallet")]
 #[derive(Debug)]

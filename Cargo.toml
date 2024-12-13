@@ -47,5 +47,9 @@ name = "wallet"
 required-features = ["wallet", "trace", "rusqlite", "callbacks"]
 
 [[example]]
+name = "multi"
+required-features = ["wallet", "trace", "rusqlite", "callbacks"]
+
+[[example]]
 name = "events"
 required-features = ["wallet", "rusqlite", "events"]
