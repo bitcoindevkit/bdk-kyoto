@@ -2,7 +2,7 @@ use std::net::{IpAddr, Ipv4Addr};
 
 use bdk_kyoto::builder::{LightClientBuilder, ServiceFlags, TrustedPeer};
 use bdk_kyoto::logger::TraceLogger;
-use bdk_kyoto::LightClient;
+use bdk_kyoto::{EventSenderExt, LightClient};
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::{KeychainKind, Wallet};
 
@@ -32,7 +32,7 @@ async fn main() -> anyhow::Result<()> {
 
     // The light client builder handles the logic of inserting the SPKs
     let LightClient {
-        sender: _,
+        sender,
         mut receiver,
         node,
     } = LightClientBuilder::new()
@@ -58,19 +58,20 @@ async fn main() -> anyhow::Result<()> {
             wallet.apply_update(update)?;
             tracing::info!("Tx count: {}", wallet.transactions().count());
             tracing::info!("Balance: {}", wallet.balance().total().to_sat());
-            let last_revealed = wallet.derivation_index(KeychainKind::External).unwrap();
-            tracing::info!("Last revealed External: {}", last_revealed);
+            let last_revealed = wallet.derivation_index(KeychainKind::External);
+            tracing::info!("Last revealed External: {:?}", last_revealed);
             tracing::info!(
-                "Last revealed Internal: {}",
-                wallet.derivation_index(KeychainKind::Internal).unwrap()
+                "Last revealed Internal: {:?}",
+                wallet.derivation_index(KeychainKind::Internal)
             );
             tracing::info!("Local chain tip: {}", wallet.local_chain().tip().height());
-            let next = wallet.peek_address(KeychainKind::External, last_revealed + 1);
+            let next = wallet.reveal_next_address(KeychainKind::External).address;
             tracing::info!("Next receiving address: {next}");
             tracing::info!(
                 "Broadcast minimum fee rate: {}",
                 receiver.broadcast_minimum()
             );
+            sender.add_revealed_scripts(&wallet).await?;
         }
     }
 }

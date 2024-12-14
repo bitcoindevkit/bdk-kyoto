@@ -159,9 +159,14 @@
 
 #![warn(missing_docs)]
 use core::fmt;
+#[cfg(feature = "wallet")]
+use core::{future::Future, pin::Pin};
 use std::collections::BTreeMap;
 #[cfg(feature = "wallet")]
 use std::collections::HashSet;
+
+#[cfg(feature = "wallet")]
+type FutureResult<'a, T, E> = Pin<Box<dyn Future<Output = Result<T, E>> + Send + 'a>>;
 
 use bdk_chain::{
     keychain_txout::KeychainTxOutIndex,
@@ -514,6 +519,39 @@ impl WalletExt for bdk_wallet::Wallet {
         Box::new(spks.into_iter())
     }
 }
+
+/// Extend the [`EventSender`] functionality to work conveniently with a [`Wallet`](bdk_wallet).
+#[cfg(feature = "wallet")]
+pub trait EventSenderExt {
+    /// Add all revealed scripts to the node to monitor.
+    fn add_revealed_scripts<'a>(
+        &'a self,
+        wallet: &'a bdk_wallet::Wallet,
+    ) -> FutureResult<'a, (), kyoto::ClientError>;
+}
+
+#[cfg(feature = "wallet")]
+impl EventSenderExt for EventSender {
+    fn add_revealed_scripts<'a>(
+        &'a self,
+        wallet: &'a bdk_wallet::Wallet,
+    ) -> FutureResult<'a, (), kyoto::ClientError> {
+        async fn _add_revealed(
+            sender: &EventSender,
+            wallet: &bdk_wallet::Wallet,
+        ) -> Result<(), kyoto::ClientError> {
+            for keychain in [KeychainKind::External, KeychainKind::Internal] {
+                let scripts = wallet.spk_index().revealed_keychain_spks(keychain);
+                for (_, script) in scripts {
+                    sender.add_script(script).await?;
+                }
+            }
+            Ok(())
+        }
+        Box::pin(_add_revealed(self, wallet))
+    }
+}
+
 trait StringExt {
     fn into_string(self) -> String;
 }
