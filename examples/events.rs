@@ -20,9 +20,9 @@ async fn main() -> anyhow::Result<()> {
         sender: _,
         mut receiver,
         node,
-    } = LightClientBuilder::new(&wallet)
+    } = LightClientBuilder::new()
         .scan_after(170_000)
-        .build()
+        .build(&wallet)
         .unwrap();
 
     tokio::task::spawn(async move { node.run().await });

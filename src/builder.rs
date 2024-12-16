@@ -30,7 +30,7 @@
 //!         .network(Network::Signet)
 //!         .create_wallet_no_persist()?;
 //!
-//!     let LightClient { sender, receiver, node } = LightClientBuilder::new(&wallet)
+//!     let LightClient { sender, receiver, node } = LightClientBuilder::new()
 //!         // When recovering a user's wallet, specify a height to start at
 //!         .scan_after(200_000)
 //!         // A node may handle mutliple connections
@@ -40,7 +40,7 @@
 //!         // How long peers have to respond messages
 //!         .timeout_duration(Duration::from_secs(10))
 //!         .peers(peers)
-//!         .build()?;
+//!         .build(&wallet)?;
 //!     Ok(())
 //! }
 //! ```
@@ -61,8 +61,7 @@ const RECOMMENDED_PEERS: u8 = 2;
 
 #[derive(Debug)]
 /// Construct a light client from a [`Wallet`] reference.
-pub struct LightClientBuilder<'a> {
-    wallet: &'a Wallet,
+pub struct LightClientBuilder {
     peers: Option<Vec<TrustedPeer>>,
     connections: Option<u8>,
     birthday_height: Option<u32>,
@@ -70,11 +69,10 @@ pub struct LightClientBuilder<'a> {
     timeout: Option<Duration>,
 }
 
-impl<'a> LightClientBuilder<'a> {
+impl LightClientBuilder {
     /// Construct a new node builder.
-    pub fn new(wallet: &'a Wallet) -> Self {
+    pub fn new() -> Self {
         Self {
-            wallet,
             peers: None,
             connections: None,
             birthday_height: None,
@@ -115,8 +113,8 @@ impl<'a> LightClientBuilder<'a> {
     }
 
     /// Build a light client node and a client to interact with the node.
-    pub fn build(self) -> Result<LightClient, BuilderError> {
-        let network = self.wallet.network();
+    pub fn build(self, wallet: &Wallet) -> Result<LightClient, BuilderError> {
+        let network = wallet.network();
         let mut node_builder = NodeBuilder::new(network);
         if let Some(whitelist) = self.peers {
             node_builder = node_builder.add_peers(whitelist);
@@ -126,8 +124,8 @@ impl<'a> LightClientBuilder<'a> {
                 // If there is a birthday at a height less than our local chain, we may assume we've
                 // already synced the wallet past the birthday height and no longer
                 // need it.
-                if birthday < self.wallet.local_chain().tip().height() {
-                    let block_id = self.wallet.local_chain().tip();
+                if birthday < wallet.local_chain().tip().height() {
+                    let block_id = wallet.local_chain().tip();
                     let header_cp = HeaderCheckpoint::new(block_id.height(), block_id.hash());
                     node_builder = node_builder.anchor_checkpoint(header_cp)
                 } else {
@@ -140,7 +138,7 @@ impl<'a> LightClientBuilder<'a> {
                 // we assume this is a new wallet and use the most recent
                 // checkpoint. Otherwise we sync from the last known tip in the
                 // LocalChain.
-                let block_id = self.wallet.local_chain().tip();
+                let block_id = wallet.local_chain().tip();
                 if block_id.height() > 0 {
                     let header_cp = HeaderCheckpoint::new(block_id.height(), block_id.hash());
                     node_builder = node_builder.anchor_checkpoint(header_cp)
@@ -159,28 +157,30 @@ impl<'a> LightClientBuilder<'a> {
         for keychain in [KeychainKind::External, KeychainKind::Internal] {
             // The user may choose to recover a wallet with lookahead scripts
             // or use the last revealed index plus some padding to find new transactions
-            let last_revealed = self
-                .wallet
+            let last_revealed = wallet
                 .spk_index()
                 .last_revealed_index(keychain)
                 .unwrap_or(0);
-            let lookahead_index = last_revealed + self.wallet.spk_index().lookahead();
+            let lookahead_index = last_revealed + wallet.spk_index().lookahead();
             for index in 0..=lookahead_index {
-                spks.insert(self.wallet.peek_address(keychain, index).script_pubkey());
+                spks.insert(wallet.peek_address(keychain, index).script_pubkey());
             }
         }
         let (node, kyoto_client) = node_builder.add_scripts(spks).build_node()?;
         let (sender, receiver) = kyoto_client.split();
-        let event_receiver = EventReceiver::from_index(
-            self.wallet.local_chain().tip(),
-            self.wallet.spk_index(),
-            receiver,
-        )?;
+        let event_receiver =
+            EventReceiver::from_index(wallet.local_chain().tip(), wallet.spk_index(), receiver)?;
         Ok(LightClient {
             sender,
             receiver: event_receiver,
             node,
         })
+    }
+}
+
+impl Default for LightClientBuilder {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

@@ -51,11 +51,11 @@ fn init_node(
     let port = peer.port();
     let mut peer = TrustedPeer::from_ip(ip);
     peer.port = Some(port);
-    Ok(LightClientBuilder::new(wallet)
+    Ok(LightClientBuilder::new()
         .peers(vec![peer])
         .data_dir(tempdir)
         .connections(1)
-        .build()?)
+        .build(wallet)?)
 }
 
 #[tokio::test]
