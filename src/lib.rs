@@ -198,6 +198,8 @@ pub use kyoto::{
 pub mod builder;
 #[cfg(feature = "callbacks")]
 pub mod logger;
+#[cfg(feature = "wallet")]
+pub mod multi;
 
 #[cfg(feature = "wallet")]
 #[derive(Debug)]
