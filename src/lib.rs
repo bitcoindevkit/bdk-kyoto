@@ -160,6 +160,8 @@
 #![warn(missing_docs)]
 use core::fmt;
 use std::collections::BTreeMap;
+#[cfg(feature = "wallet")]
+use std::collections::HashSet;
 
 use bdk_chain::{
     keychain_txout::KeychainTxOutIndex,
@@ -183,7 +185,9 @@ pub use kyoto::{DisconnectedHeader, FailurePayload};
 
 pub use kyoto::ClientSender as EventSender;
 use kyoto::{IndexedBlock, NodeMessage, RejectReason};
-pub use kyoto::{NodeState, Receiver, SyncUpdate, TxBroadcast, TxBroadcastPolicy, Txid, Warning};
+pub use kyoto::{
+    NodeState, Receiver, ScriptBuf, SyncUpdate, TxBroadcast, TxBroadcastPolicy, Txid, Warning,
+};
 
 #[cfg(all(feature = "wallet", feature = "rusqlite"))]
 pub mod builder;
@@ -487,6 +491,29 @@ pub enum LogLevel {
     Warning,
 }
 
+/// Extend the functionality of [`Wallet`](bdk_wallet) for interoperablility
+/// with the light client.
+#[cfg(feature = "wallet")]
+pub trait WalletExt {
+    /// Collect relevant scripts for addition to the node. Peeks scripts
+    /// `lookahead` + `last_revealed_index` for each keychain.
+    fn peek_revealed_plus_lookahead(&self) -> Box<dyn Iterator<Item = ScriptBuf>>;
+}
+
+#[cfg(feature = "wallet")]
+impl WalletExt for bdk_wallet::Wallet {
+    fn peek_revealed_plus_lookahead(&self) -> Box<dyn Iterator<Item = ScriptBuf>> {
+        let mut spks: HashSet<ScriptBuf> = HashSet::new();
+        for keychain in [KeychainKind::External, KeychainKind::Internal] {
+            let last_revealed = self.spk_index().last_revealed_index(keychain).unwrap_or(0);
+            let lookahead_index = last_revealed + self.spk_index().lookahead();
+            for index in 0..=lookahead_index {
+                spks.insert(self.peek_address(keychain, index).script_pubkey());
+            }
+        }
+        Box::new(spks.into_iter())
+    }
+}
 trait StringExt {
     fn into_string(self) -> String;
 }
