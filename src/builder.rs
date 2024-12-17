@@ -45,17 +45,17 @@
 //! }
 //! ```
 
-use std::{collections::HashSet, path::PathBuf, time::Duration};
+use std::{path::PathBuf, time::Duration};
 
 use bdk_chain::local_chain::MissingGenesisError;
-use bdk_wallet::{KeychainKind, Wallet};
+use bdk_wallet::Wallet;
 use kyoto::NodeBuilder;
 pub use kyoto::{
     db::error::SqlInitializationError, AddrV2, HeaderCheckpoint, ScriptBuf, ServiceFlags,
     TrustedPeer,
 };
 
-use crate::{EventReceiver, LightClient};
+use crate::{EventReceiver, LightClient, WalletExt};
 
 const RECOMMENDED_PEERS: u8 = 2;
 
@@ -153,20 +153,9 @@ impl LightClientBuilder {
         }
         node_builder =
             node_builder.num_required_peers(self.connections.unwrap_or(RECOMMENDED_PEERS));
-        let mut spks: HashSet<ScriptBuf> = HashSet::new();
-        for keychain in [KeychainKind::External, KeychainKind::Internal] {
-            // The user may choose to recover a wallet with lookahead scripts
-            // or use the last revealed index plus some padding to find new transactions
-            let last_revealed = wallet
-                .spk_index()
-                .last_revealed_index(keychain)
-                .unwrap_or(0);
-            let lookahead_index = last_revealed + wallet.spk_index().lookahead();
-            for index in 0..=lookahead_index {
-                spks.insert(wallet.peek_address(keychain, index).script_pubkey());
-            }
-        }
-        let (node, kyoto_client) = node_builder.add_scripts(spks).build_node()?;
+        let (node, kyoto_client) = node_builder
+            .add_scripts(wallet.peek_revealed_plus_lookahead().collect())
+            .build_node()?;
         let (sender, receiver) = kyoto_client.split();
         let event_receiver =
             EventReceiver::from_index(wallet.local_chain().tip(), wallet.spk_index(), receiver)?;
