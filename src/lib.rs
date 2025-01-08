@@ -80,110 +80,30 @@
 //!     }
 //! }
 //! ```
-//!
-//! Custom wallet implementations may still take advantage of BDK-Kyoto, however building the
-//! [`EventReceiver`] will involve configuring Kyoto directly.
-//!
-//! ```no_run
-//! # const RECEIVE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/0/*)";
-//! # const CHANGE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/1/*)";
-//! # use std::collections::HashSet;
-//! # use std::net::{IpAddr, Ipv4Addr};
-//! # use std::str::FromStr;
-//! # use bdk_wallet::bitcoin::{
-//! #    constants::genesis_block, secp256k1::Secp256k1, Address, BlockHash, Network, ScriptBuf,
-//! # };
-//! # use bdk_wallet::chain::{
-//! #    keychain_txout::KeychainTxOutIndex, local_chain::LocalChain, miniscript::Descriptor, FullTxOut,
-//! #    IndexedTxGraph, SpkIterator, Merge,
-//! # };
-//! use bdk_kyoto::EventReceiver;
-//! use bdk_kyoto::logger::PrintLogger;
-//! use bdk_kyoto::kyoto::{TrustedPeer, NodeBuilder, HeaderCheckpoint};
-//!
-//! const TARGET_INDEX: u32 = 20;
-//!
-//! #[tokio::main]
-//! async fn main() -> anyhow::Result<()> {
-//!     let secp = Secp256k1::new();
-//!     let (descriptor, _) = Descriptor::parse_descriptor(&secp, &RECEIVE)?;
-//!     let (change_descriptor, _) = Descriptor::parse_descriptor(&secp, &CHANGE)?;
-//!
-//!     let genesis_hash = genesis_block(Network::Signet).block_hash();
-//!     let (mut chain, _) = LocalChain::from_genesis_hash(genesis_hash);
-//!
-//!     let mut graph = IndexedTxGraph::new({
-//!         let mut index = KeychainTxOutIndex::default();
-//!         let _ = index.insert_descriptor("external", descriptor);
-//!         let _ = index.insert_descriptor("internal", change_descriptor);
-//!         index
-//!     });
-//!
-//!     let mut spks_to_watch: HashSet<ScriptBuf> = HashSet::new();
-//!     for (_k, desc) in graph.index.keychains() {
-//!         for (_i, spk) in SpkIterator::new_with_range(desc, 0..TARGET_INDEX) {
-//!             spks_to_watch.insert(spk);
-//!         }
-//!     }
-//!
-//!     let peer = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
-//!     let trusted = TrustedPeer::from_ip(peer);
-//!     let cp = HeaderCheckpoint::closest_checkpoint_below_height(170_000, Network::Signet);
-//!
-//!     let builder = NodeBuilder::new(Network::Signet);
-//!     let (node, kyoto_client) = builder
-//!         .add_peer(trusted)
-//!         .add_scripts(spks_to_watch)
-//!         .anchor_checkpoint(cp)
-//!         .num_required_peers(2)
-//!         .build_node()
-//!         .unwrap();
-//!
-//!     let (sender, receiver) = kyoto_client.split();
-//!     let mut client = EventReceiver::from_index(chain.tip(), &graph.index, receiver).unwrap();
-//!
-//!     tokio::task::spawn(async move { node.run().await });
-//!
-//!     let logger = PrintLogger::new();
-//!     if let Some(update) = client.update(&logger).await {
-//!         let _ = chain.apply_update(update.chain_update.unwrap())?;
-//!         let _ = graph.apply_update(update.tx_update);
-//!         let _ = graph
-//!             .index
-//!             .reveal_to_target_multi(&update.last_active_indices);
-//!     }
-//!     sender.shutdown().await?;
-//!     Ok(())
-//! }
-//! ```
 
 #![warn(missing_docs)]
 use core::fmt;
-#[cfg(feature = "wallet")]
 use core::{future::Future, pin::Pin};
 use std::collections::BTreeMap;
-#[cfg(feature = "wallet")]
 use std::collections::HashSet;
 
-#[cfg(feature = "wallet")]
 type FutureResult<'a, T, E> = Pin<Box<dyn Future<Output = Result<T, E>> + Send + 'a>>;
 
-use bdk_chain::{
+use bdk_wallet::chain::{
     keychain_txout::KeychainTxOutIndex,
     local_chain::{self, CheckPoint, LocalChain},
     spk_client::FullScanResponse,
     IndexedTxGraph,
 };
-use bdk_chain::{ConfirmationBlockTime, TxUpdate};
+use bdk_wallet::chain::{ConfirmationBlockTime, TxUpdate};
 
-pub use bdk_chain::bitcoin::FeeRate;
-pub use bdk_chain::local_chain::MissingGenesisError;
+pub use bdk_wallet::chain::bitcoin::FeeRate;
+pub use bdk_wallet::chain::local_chain::MissingGenesisError;
 
 pub extern crate kyoto;
 
-#[cfg(feature = "wallet")]
 use bdk_wallet::KeychainKind;
-#[cfg(feature = "rusqlite")]
+
 pub use kyoto::core::builder::NodeDefault;
 #[cfg(feature = "events")]
 pub use kyoto::{DisconnectedHeader, FailurePayload};
@@ -194,19 +114,17 @@ pub use kyoto::{
     NodeState, Receiver, ScriptBuf, SyncUpdate, TxBroadcast, TxBroadcastPolicy, Txid, Warning,
 };
 
-#[cfg(all(feature = "wallet", feature = "rusqlite"))]
 pub mod builder;
 #[cfg(feature = "callbacks")]
 pub mod logger;
 
-#[cfg(feature = "wallet")]
 #[derive(Debug)]
 /// A node and associated structs to send and receive events to and from the node.
 pub struct LightClient {
     /// Send events to a running node (i.e. broadcast a transaction).
     pub sender: EventSender,
     /// Receive wallet updates from a node.
-    pub receiver: EventReceiver<KeychainKind>,
+    pub receiver: EventReceiver,
     /// The underlying node that must be run to fetch blocks from peers.
     pub node: NodeDefault,
 }
@@ -214,25 +132,22 @@ pub struct LightClient {
 /// Interpret events from a node that is running to apply
 /// updates to an underlying wallet.
 #[derive(Debug)]
-pub struct EventReceiver<K> {
+pub struct EventReceiver {
     // channel receiver
     receiver: kyoto::Receiver<NodeMessage>,
     // changes to local chain
     chain: local_chain::LocalChain,
     // receive graph
-    graph: IndexedTxGraph<ConfirmationBlockTime, KeychainTxOutIndex<K>>,
+    graph: IndexedTxGraph<ConfirmationBlockTime, KeychainTxOutIndex<KeychainKind>>,
     // the network minimum to broadcast a transaction
     min_broadcast_fee: FeeRate,
 }
 
-impl<K> EventReceiver<K>
-where
-    K: fmt::Debug + Clone + Ord,
-{
+impl EventReceiver {
     /// Build a light client event handler from a [`KeychainTxOutIndex`] and [`CheckPoint`].
-    pub fn from_index(
+    pub(crate) fn from_index(
         cp: CheckPoint,
-        index: &KeychainTxOutIndex<K>,
+        index: KeychainTxOutIndex<KeychainKind>,
         receiver: Receiver<NodeMessage>,
     ) -> Result<Self, MissingGenesisError> {
         Ok(Self {
@@ -251,7 +166,10 @@ where
     /// running node. Production applications should define how the application handles
     /// these events and displays them to end users.
     #[cfg(feature = "callbacks")]
-    pub async fn update(&mut self, logger: &dyn NodeEventHandler) -> Option<FullScanResponse<K>> {
+    pub async fn update(
+        &mut self,
+        logger: &dyn NodeEventHandler,
+    ) -> Option<FullScanResponse<KeychainKind>> {
         let mut chain_changeset = BTreeMap::new();
         while let Ok(message) = self.receiver.recv().await {
             self.log(&message, logger);
@@ -330,7 +248,7 @@ where
 
     // When the client is believed to have synced to the chain tip of most work,
     // we can return a wallet update.
-    fn get_scan_response(&mut self) -> FullScanResponse<K> {
+    fn get_scan_response(&mut self) -> FullScanResponse<KeychainKind> {
         let tx_update = TxUpdate::from(self.graph.graph().clone());
         let graph = core::mem::take(&mut self.graph);
         let last_active_indices = graph.index.last_used_indices();
@@ -352,7 +270,7 @@ where
     /// Informational messages on the node operation may be filtered out with
     /// [`LogLevel::Warning`], which will only emit warnings when called.
     #[cfg(feature = "events")]
-    pub async fn next_event(&mut self, log_level: LogLevel) -> Option<Event<K>> {
+    pub async fn next_event(&mut self, log_level: LogLevel) -> Option<Event> {
         while let Ok(message) = self.receiver.recv().await {
             match message {
                 NodeMessage::Dialog(log) => {
@@ -455,7 +373,7 @@ pub trait NodeEventHandler: Send + Sync + fmt::Debug + 'static {
 
 /// Events emitted by a node that may be used by a wallet or application.
 #[cfg(feature = "events")]
-pub enum Event<K: fmt::Debug + Clone + Ord> {
+pub enum Event {
     /// Information about the current node process.
     Log(String),
     /// Warnings emitted by the node that may effect sync times or node operation.
@@ -474,7 +392,7 @@ pub enum Event<K: fmt::Debug + Clone + Ord> {
     ///
     /// This event will be emitted every time a new block is found while the node
     /// is running and is connected to peers.
-    ScanResponse(FullScanResponse<K>),
+    ScanResponse(FullScanResponse<KeychainKind>),
     /// Blocks were reorganized from the chain of most work.
     ///
     /// ## Note
@@ -498,14 +416,12 @@ pub enum LogLevel {
 
 /// Extend the functionality of [`Wallet`](bdk_wallet) for interoperablility
 /// with the light client.
-#[cfg(feature = "wallet")]
 pub trait WalletExt {
     /// Collect relevant scripts for addition to the node. Peeks scripts
     /// `lookahead` + `last_revealed_index` for each keychain.
     fn peek_revealed_plus_lookahead(&self) -> Box<dyn Iterator<Item = ScriptBuf>>;
 }
 
-#[cfg(feature = "wallet")]
 impl WalletExt for bdk_wallet::Wallet {
     fn peek_revealed_plus_lookahead(&self) -> Box<dyn Iterator<Item = ScriptBuf>> {
         let mut spks: HashSet<ScriptBuf> = HashSet::new();
@@ -521,7 +437,6 @@ impl WalletExt for bdk_wallet::Wallet {
 }
 
 /// Extend the [`EventSender`] functionality to work conveniently with a [`Wallet`](bdk_wallet).
-#[cfg(feature = "wallet")]
 pub trait EventSenderExt {
     /// Add all revealed scripts to the node to monitor.
     fn add_revealed_scripts<'a>(
@@ -530,7 +445,6 @@ pub trait EventSenderExt {
     ) -> FutureResult<'a, (), kyoto::ClientError>;
 }
 
-#[cfg(feature = "wallet")]
 impl EventSenderExt for EventSender {
     fn add_revealed_scripts<'a>(
         &'a self,
