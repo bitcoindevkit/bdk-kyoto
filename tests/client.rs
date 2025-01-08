@@ -8,8 +8,6 @@ use tokio::time;
 
 use bdk_kyoto::builder::LightClientBuilder;
 use bdk_kyoto::builder::TrustedPeer;
-#[cfg(feature = "callbacks")]
-use bdk_kyoto::logger::PrintLogger;
 use bdk_testenv::bitcoincore_rpc::RpcApi;
 use bdk_testenv::bitcoind;
 use bdk_testenv::TestEnv;
@@ -59,7 +57,6 @@ fn init_node(
 }
 
 #[tokio::test]
-#[cfg(feature = "callbacks")]
 async fn update_returns_blockchain_data() -> anyhow::Result<()> {
     let env = testenv()?;
 
@@ -78,9 +75,10 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
     // build node/client
     let tempdir = tempfile::tempdir()?.path().join("kyoto-data");
     let LightClient {
-        sender,
-        mut receiver,
+        requester,
+        mut update_subscriber,
         node,
+        ..
     } = init_node(&env, &wallet, tempdir)?;
 
     // mine blocks
@@ -95,9 +93,11 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
 
     // run node
     task::spawn(async move { node.run().await });
-    let logger = PrintLogger::new();
     // get update
-    let res = receiver.update(&logger).await.expect("should have update");
+    let res = update_subscriber
+        .update()
+        .await
+        .expect("should have update");
     let FullScanResponse {
         tx_update,
         chain_update,
@@ -120,13 +120,12 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
         [(KeychainKind::External, index)].into()
     );
 
-    sender.shutdown().await?;
+    requester.shutdown().await?;
 
     Ok(())
 }
 
 #[tokio::test]
-#[cfg(feature = "callbacks")]
 async fn update_handles_reorg() -> anyhow::Result<()> {
     let env = testenv()?;
 
@@ -137,9 +136,10 @@ async fn update_handles_reorg() -> anyhow::Result<()> {
 
     let tempdir = tempfile::tempdir()?.path().join("kyoto-data");
     let LightClient {
-        sender,
-        mut receiver,
+        requester,
+        mut update_subscriber,
         node,
+        ..
     } = init_node(&env, &wallet, tempdir)?;
 
     // mine blocks
@@ -160,8 +160,10 @@ async fn update_handles_reorg() -> anyhow::Result<()> {
     task::spawn(async move { node.run().await });
 
     // get update
-    let logger = PrintLogger::new();
-    let res = receiver.update(&logger).await.expect("should have update");
+    let res = update_subscriber
+        .update()
+        .await
+        .expect("should have update");
     let (anchor, anchor_txid) = *res.tx_update.anchors.iter().next().unwrap();
     assert_eq!(anchor.block_id.hash, blockhash);
     assert_eq!(anchor_txid, txid);
@@ -174,7 +176,10 @@ async fn update_handles_reorg() -> anyhow::Result<()> {
     wait_for_height(&env, 103).await?;
 
     // expect tx to confirm at same height but different blockhash
-    let res = receiver.update(&logger).await.expect("should have update");
+    let res = update_subscriber
+        .update()
+        .await
+        .expect("should have update");
     let (anchor, anchor_txid) = *res.tx_update.anchors.iter().next().unwrap();
     assert_eq!(anchor_txid, txid);
     assert_eq!(anchor.block_id.height, 102);
@@ -182,13 +187,12 @@ async fn update_handles_reorg() -> anyhow::Result<()> {
     assert_eq!(anchor.block_id.hash, new_blockhash);
     wallet.apply_update(res).unwrap();
 
-    sender.shutdown().await?;
+    requester.shutdown().await?;
 
     Ok(())
 }
 
 #[tokio::test]
-#[cfg(feature = "callbacks")]
 async fn update_handles_dormant_wallet() -> anyhow::Result<()> {
     let env = testenv()?;
 
@@ -199,9 +203,10 @@ async fn update_handles_dormant_wallet() -> anyhow::Result<()> {
 
     let tempdir = tempfile::tempdir()?.path().join("kyoto-data");
     let LightClient {
-        sender,
-        mut receiver,
+        requester,
+        mut update_subscriber,
         node,
+        ..
     } = init_node(&env, &wallet, tempdir.clone())?;
 
     // mine blocks
@@ -222,15 +227,17 @@ async fn update_handles_dormant_wallet() -> anyhow::Result<()> {
     task::spawn(async move { node.run().await });
 
     // get update
-    let logger = PrintLogger::new();
-    let res = receiver.update(&logger).await.expect("should have update");
+    let res = update_subscriber
+        .update()
+        .await
+        .expect("should have update");
     let (anchor, anchor_txid) = *res.tx_update.anchors.iter().next().unwrap();
     assert_eq!(anchor.block_id.hash, blockhash);
     assert_eq!(anchor_txid, txid);
     wallet.apply_update(res).unwrap();
 
     // shut down then reorg
-    sender.shutdown().await?;
+    requester.shutdown().await?;
 
     let hashes = env.reorg(1)?; // 102
     let new_blockhash = hashes[0];
@@ -238,15 +245,19 @@ async fn update_handles_dormant_wallet() -> anyhow::Result<()> {
     wait_for_height(&env, 122).await?;
 
     let LightClient {
-        sender,
-        mut receiver,
+        requester,
+        mut update_subscriber,
         node,
+        ..
     } = init_node(&env, &wallet, tempdir)?;
 
     task::spawn(async move { node.run().await });
 
     // expect tx to confirm at same height but different blockhash
-    let res = receiver.update(&logger).await.expect("should have update");
+    let res = update_subscriber
+        .update()
+        .await
+        .expect("should have update");
     let (anchor, anchor_txid) = *res.tx_update.anchors.iter().next().unwrap();
     assert_eq!(anchor_txid, txid);
     assert_eq!(anchor.block_id.height, 102);
@@ -254,7 +265,7 @@ async fn update_handles_dormant_wallet() -> anyhow::Result<()> {
     assert_eq!(anchor.block_id.hash, new_blockhash);
     wallet.apply_update(res).unwrap();
 
-    sender.shutdown().await?;
+    requester.shutdown().await?;
 
     Ok(())
 }

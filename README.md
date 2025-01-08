@@ -9,8 +9,6 @@ client/server relationship. Esplora and Electrum offer _proactive_ APIs, in that
 
 In the case of running a node as a background process, the developer experience is far more _reactive_, in that the node may emit any number of events, and the application may respond to them. BDK-Kyoto curates these events into structures that are easily handled by BDK APIs, making integration of compact block filters easily understood.
 
-Developers are free to use [`bdk_wallet`](https://docs.rs/bdk_wallet/latest/bdk_wallet/), or only primitives found in [`bdk_core`](https://docs.rs/bdk_core/latest/bdk_core/) and [`bdk_chain`](https://docs.rs/bdk_chain/latest/bdk_chain/).
-
 ## License
 
 Licensed under either of
