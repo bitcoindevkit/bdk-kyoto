@@ -47,7 +47,7 @@
 
 use std::{path::PathBuf, time::Duration};
 
-use bdk_chain::local_chain::MissingGenesisError;
+use bdk_wallet::chain::local_chain::MissingGenesisError;
 use bdk_wallet::Wallet;
 use kyoto::NodeBuilder;
 pub use kyoto::{
@@ -157,8 +157,11 @@ impl LightClientBuilder {
             .add_scripts(wallet.peek_revealed_plus_lookahead().collect())
             .build_node()?;
         let (sender, receiver) = kyoto_client.split();
-        let event_receiver =
-            EventReceiver::from_index(wallet.local_chain().tip(), wallet.spk_index(), receiver)?;
+        let event_receiver = EventReceiver::from_index(
+            wallet.local_chain().tip(),
+            wallet.spk_index().clone(),
+            receiver,
+        )?;
         Ok(LightClient {
             sender,
             receiver: event_receiver,
