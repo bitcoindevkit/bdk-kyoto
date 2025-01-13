@@ -117,6 +117,8 @@ pub use kyoto::{
 pub mod builder;
 #[cfg(feature = "callbacks")]
 pub mod logger;
+#[cfg(feature = "wallet")]
+pub mod multi;
 
 #[derive(Debug)]
 /// A node and associated structs to send and receive events to and from the node.
