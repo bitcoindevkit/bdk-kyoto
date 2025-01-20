@@ -46,11 +46,11 @@ use std::collections::HashSet;
 type FutureResult<'a, T, E> = Pin<Box<dyn Future<Output = Result<T, E>> + Send + 'a>>;
 
 pub use bdk_wallet::chain::local_chain::MissingGenesisError;
+pub use bdk_wallet::Update;
 
 use bdk_wallet::chain::{
     keychain_txout::KeychainTxOutIndex,
     local_chain::{self, CheckPoint, LocalChain},
-    spk_client::FullScanResponse,
     IndexedTxGraph,
 };
 use bdk_wallet::chain::{ConfirmationBlockTime, TxUpdate};
@@ -120,7 +120,7 @@ impl UpdateSubscriber {
     /// A reference to a [`NodeEventHandler`] is required, which handles events emitted from a
     /// running node. Production applications should define how the application handles
     /// these events and displays them to end users.
-    pub async fn update(&mut self) -> Option<FullScanResponse<KeychainKind>> {
+    pub async fn update(&mut self) -> Option<Update> {
         let mut chain_changeset = BTreeMap::new();
         while let Some(message) = self.receiver.recv().await {
             match message {
@@ -161,15 +161,15 @@ impl UpdateSubscriber {
 
     // When the client is believed to have synced to the chain tip of most work,
     // we can return a wallet update.
-    fn get_scan_response(&mut self) -> FullScanResponse<KeychainKind> {
+    fn get_scan_response(&mut self) -> Update {
         let tx_update = TxUpdate::from(self.graph.graph().clone());
         let graph = core::mem::take(&mut self.graph);
         let last_active_indices = graph.index.last_used_indices();
         self.graph = IndexedTxGraph::new(graph.index);
-        FullScanResponse {
+        Update {
             tx_update,
             last_active_indices,
-            chain_update: Some(self.chain.tip()),
+            chain: Some(self.chain.tip()),
         }
     }
 }

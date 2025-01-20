@@ -12,9 +12,9 @@ use bdk_testenv::bitcoincore_rpc::RpcApi;
 use bdk_testenv::bitcoind;
 use bdk_testenv::TestEnv;
 use bdk_wallet::bitcoin::{Amount, Network};
-use bdk_wallet::chain::spk_client::FullScanResponse;
 use bdk_wallet::CreateParams;
 use bdk_wallet::KeychainKind;
+use bdk_wallet::Update;
 
 const EXTERNAL_DESCRIPTOR: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/0/*)";
 const INTERNAL_DESCRIPTOR: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/1/*)";
@@ -98,9 +98,9 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
         .update()
         .await
         .expect("should have update");
-    let FullScanResponse {
+    let Update {
         tx_update,
-        chain_update,
+        chain,
         last_active_indices,
     } = res;
     // graph tx and anchor
@@ -112,7 +112,7 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
     let txout = tx.output.iter().find(|txout| txout.value == amt).unwrap();
     assert_eq!(txout.script_pubkey, addr.script_pubkey());
     // chain
-    let update_cp = chain_update.unwrap();
+    let update_cp = chain.unwrap();
     assert_eq!(update_cp.height(), 102);
     // keychain
     assert_eq!(
