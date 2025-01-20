@@ -13,15 +13,7 @@ rust-version = "1.63.0"
 
 [dependencies]
 bdk_wallet = { version = "1.0.0" }
-kyoto-cbf = { version = "0.6.0", default-features = false, features = ["dns", "database"] }
-tracing = { version = "0.1", optional = true }
-tracing-subscriber = { version = "0.3", optional = true }
-
-[features]
-default = ["events", "callbacks", "trace"]
-trace = ["tracing", "tracing-subscriber"]
-callbacks = []
-events = []
+kyoto-cbf = { version = "0.8.0", default-features = false, features = ["dns", "database"] }
 
 [dev-dependencies]
 tokio = { version = "1.37", features = ["full"], default-features = false }
@@ -33,9 +25,4 @@ tracing-subscriber = { version = "0.3" }
 
 
 [[example]]
-name = "callbacks"
-required-features = ["trace", "callbacks"]
-
-[[example]]
-name = "events"
-required-features = ["events"]
+name = "example"

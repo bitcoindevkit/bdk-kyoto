@@ -14,7 +14,6 @@
 //! use bdk_wallet::Wallet;
 //! use bdk_wallet::bitcoin::Network;
 //! use bdk_kyoto::builder::{LightClientBuilder, TrustedPeer};
-//! use bdk_kyoto::logger::PrintLogger;
 //! use bdk_kyoto::LightClient;
 //!
 //! #[tokio::main]
@@ -30,7 +29,7 @@
 //!         .network(Network::Signet)
 //!         .create_wallet_no_persist()?;
 //!
-//!     let LightClient { sender, receiver, node } = LightClientBuilder::new()
+//!     let LightClient { requester, log_subscriber, warning_subscriber, update_subscriber, node } = LightClientBuilder::new()
 //!         // When recovering a user's wallet, specify a height to start at
 //!         .scan_after(200_000)
 //!         // A node may handle mutliple connections
@@ -55,7 +54,7 @@ pub use kyoto::{
     TrustedPeer,
 };
 
-use crate::{EventReceiver, LightClient, WalletExt};
+use crate::{LightClient, LogSubscriber, UpdateSubscriber, WalletExt, WarningSubscriber};
 
 const RECOMMENDED_PEERS: u8 = 2;
 
@@ -156,15 +155,22 @@ impl LightClientBuilder {
         let (node, kyoto_client) = node_builder
             .add_scripts(wallet.peek_revealed_plus_lookahead().collect())
             .build_node()?;
-        let (sender, receiver) = kyoto_client.split();
-        let event_receiver = EventReceiver::from_index(
+        let kyoto::Client {
+            requester,
+            log_rx,
+            warn_rx,
+            event_rx,
+        } = kyoto_client;
+        let update_subscriber = UpdateSubscriber::from_index(
             wallet.local_chain().tip(),
             wallet.spk_index().clone(),
-            receiver,
+            event_rx,
         )?;
         Ok(LightClient {
-            sender,
-            receiver: event_receiver,
+            requester,
+            log_subscriber: LogSubscriber::new(log_rx),
+            warning_subscriber: WarningSubscriber::new(warn_rx),
+            update_subscriber,
             node,
         })
     }
