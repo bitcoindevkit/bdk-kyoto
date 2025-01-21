@@ -46,7 +46,6 @@
 
 use std::{path::PathBuf, time::Duration};
 
-use bdk_wallet::chain::local_chain::MissingGenesisError;
 use bdk_wallet::Wallet;
 use kyoto::NodeBuilder;
 pub use kyoto::{
@@ -112,7 +111,7 @@ impl LightClientBuilder {
     }
 
     /// Build a light client node and a client to interact with the node.
-    pub fn build(self, wallet: &Wallet) -> Result<LightClient, BuilderError> {
+    pub fn build(self, wallet: &Wallet) -> Result<LightClient, SqlInitializationError> {
         let network = wallet.network();
         let mut node_builder = NodeBuilder::new(network);
         if let Some(whitelist) = self.peers {
@@ -165,7 +164,7 @@ impl LightClientBuilder {
             wallet.local_chain().tip(),
             wallet.spk_index().clone(),
             event_rx,
-        )?;
+        );
         Ok(LightClient {
             requester,
             log_subscriber: LogSubscriber::new(log_rx),
@@ -179,44 +178,5 @@ impl LightClientBuilder {
 impl Default for LightClientBuilder {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-/// Errors thrown by the [`LightClientBuilder`].
-#[derive(Debug)]
-pub enum BuilderError {
-    /// The `LocalChain` was not initialized with a genesis block.
-    Chain(MissingGenesisError),
-    /// The database encountered a fatal error.
-    Database(SqlInitializationError),
-}
-
-impl std::fmt::Display for BuilderError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            BuilderError::Chain(e) => write!(f, "genesis block not found: {e}"),
-            BuilderError::Database(e) => write!(f, "fatal database error: {e}"),
-        }
-    }
-}
-
-impl std::error::Error for BuilderError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            BuilderError::Chain(e) => Some(e),
-            BuilderError::Database(e) => Some(e),
-        }
-    }
-}
-
-impl From<MissingGenesisError> for BuilderError {
-    fn from(value: MissingGenesisError) -> Self {
-        BuilderError::Chain(value)
-    }
-}
-
-impl From<SqlInitializationError> for BuilderError {
-    fn from(value: SqlInitializationError) -> Self {
-        BuilderError::Database(value)
     }
 }

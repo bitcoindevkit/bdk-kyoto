@@ -45,7 +45,6 @@ use std::collections::HashSet;
 
 type FutureResult<'a, T, E> = Pin<Box<dyn Future<Output = Result<T, E>> + Send + 'a>>;
 
-pub use bdk_wallet::chain::local_chain::MissingGenesisError;
 pub use bdk_wallet::Update;
 
 use bdk_wallet::chain::{
@@ -107,13 +106,13 @@ impl UpdateSubscriber {
         cp: CheckPoint,
         index: KeychainTxOutIndex<KeychainKind>,
         receiver: UnboundedReceiver<Event>,
-    ) -> Result<Self, MissingGenesisError> {
-        Ok(Self {
+    ) -> Self {
+        Self {
             receiver,
-            chain: LocalChain::from_tip(cp)?,
+            chain: LocalChain::from_tip(cp).expect("chain was initialized with genesis"),
             graph: IndexedTxGraph::new(index.clone()),
             chain_changeset: BTreeMap::new(),
-        })
+        }
     }
 
     /// Return the most recent update from the node once it has synced to the network's tip.
