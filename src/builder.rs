@@ -44,9 +44,9 @@
 //! }
 //! ```
 
-use std::{path::PathBuf, time::Duration};
+use std::{collections::BTreeMap, path::PathBuf, time::Duration};
 
-use bdk_wallet::Wallet;
+use bdk_wallet::{chain::IndexedTxGraph, Wallet};
 use kyoto::NodeBuilder;
 pub use kyoto::{
     db::error::SqlInitializationError, AddrV2, HeaderCheckpoint, ScriptBuf, ServiceFlags,
@@ -160,11 +160,13 @@ impl LightClientBuilder {
             warn_rx,
             event_rx,
         } = kyoto_client;
-        let update_subscriber = UpdateSubscriber::from_index(
-            wallet.local_chain().tip(),
-            wallet.spk_index().clone(),
-            event_rx,
-        );
+        let indexed_graph = IndexedTxGraph::new(wallet.spk_index().clone());
+        let update_subscriber = UpdateSubscriber {
+            receiver: event_rx,
+            chain: wallet.local_chain().clone(),
+            graph: indexed_graph,
+            chain_changeset: BTreeMap::new(),
+        };
         Ok(LightClient {
             requester,
             log_subscriber: LogSubscriber::new(log_rx),

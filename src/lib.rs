@@ -47,11 +47,7 @@ type FutureResult<'a, T, E> = Pin<Box<dyn Future<Output = Result<T, E>> + Send +
 
 pub use bdk_wallet::Update;
 
-use bdk_wallet::chain::{
-    keychain_txout::KeychainTxOutIndex,
-    local_chain::{self, CheckPoint, LocalChain},
-    IndexedTxGraph,
-};
+use bdk_wallet::chain::{keychain_txout::KeychainTxOutIndex, local_chain, IndexedTxGraph};
 use bdk_wallet::chain::{ConfirmationBlockTime, TxUpdate};
 use bdk_wallet::KeychainKind;
 
@@ -101,20 +97,6 @@ pub struct UpdateSubscriber {
 }
 
 impl UpdateSubscriber {
-    /// Build a light client event handler from a [`KeychainTxOutIndex`] and [`CheckPoint`].
-    pub(crate) fn from_index(
-        cp: CheckPoint,
-        index: KeychainTxOutIndex<KeychainKind>,
-        receiver: UnboundedReceiver<Event>,
-    ) -> Self {
-        Self {
-            receiver,
-            chain: LocalChain::from_tip(cp).expect("chain was initialized with genesis"),
-            graph: IndexedTxGraph::new(index.clone()),
-            chain_changeset: BTreeMap::new(),
-        }
-    }
-
     /// Return the most recent update from the node once it has synced to the network's tip.
     /// This may take a significant portion of time during wallet recoveries or dormant wallets.
     /// Note that you may call this method in a loop as long as the node is running.
