@@ -54,11 +54,9 @@ use bdk_wallet::KeychainKind;
 pub extern crate kyoto;
 
 pub use kyoto::core::builder::NodeDefault;
-pub use kyoto::FeeRate;
-pub use kyoto::Requester;
-pub use kyoto::{DisconnectedHeader, RejectPayload};
 pub use kyoto::{
-    Log, NodeState, ScriptBuf, SyncUpdate, TxBroadcast, TxBroadcastPolicy, Txid, Warning,
+    FeeRate, Log, NodeState, RejectPayload, RejectReason, Requester, ScriptBuf, SyncUpdate,
+    TxBroadcast, TxBroadcastPolicy, Txid, Warning,
 };
 
 use kyoto::Receiver;
@@ -100,10 +98,6 @@ impl UpdateSubscriber {
     /// Return the most recent update from the node once it has synced to the network's tip.
     /// This may take a significant portion of time during wallet recoveries or dormant wallets.
     /// Note that you may call this method in a loop as long as the node is running.
-    ///
-    /// A reference to a [`NodeEventHandler`] is required, which handles events emitted from a
-    /// running node. Production applications should define how the application handles
-    /// these events and displays them to end users.
     pub async fn update(&mut self) -> Option<Update> {
         while let Some(message) = self.receiver.recv().await {
             match message {
