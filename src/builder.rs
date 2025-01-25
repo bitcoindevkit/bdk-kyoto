@@ -14,7 +14,7 @@
 //! use bdk_wallet::Wallet;
 //! use bdk_wallet::bitcoin::Network;
 //! use bdk_kyoto::builder::{LightClientBuilder, TrustedPeer};
-//! use bdk_kyoto::LightClient;
+//! use bdk_kyoto::{LightClient, ScanType};
 //!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {
@@ -29,9 +29,11 @@
 //!         .network(Network::Signet)
 //!         .create_wallet_no_persist()?;
 //!
+//!     let scan_type = ScanType::Recovery { from_height: 200_000 };
+//!
 //!     let LightClient { requester, log_subscriber, warning_subscriber, update_subscriber, node } = LightClientBuilder::new()
-//!         // When recovering a user's wallet, specify a height to start at
-//!         .scan_after(200_000)
+//!         // Configure the scan to recover the wallet
+//!         .scan_type(scan_type)
 //!         // A node may handle mutliple connections
 //!         .connections(2)
 //!         // Choose where to store node data
@@ -53,7 +55,7 @@ pub use kyoto::{
     TrustedPeer,
 };
 
-use crate::{LightClient, LogSubscriber, UpdateSubscriber, WalletExt, WarningSubscriber};
+use crate::{LightClient, LogSubscriber, ScanType, UpdateSubscriber, WalletExt, WarningSubscriber};
 
 const RECOMMENDED_PEERS: u8 = 2;
 
@@ -62,7 +64,7 @@ const RECOMMENDED_PEERS: u8 = 2;
 pub struct LightClientBuilder {
     peers: Option<Vec<TrustedPeer>>,
     connections: Option<u8>,
-    birthday_height: Option<u32>,
+    scan_type: ScanType,
     data_dir: Option<PathBuf>,
     timeout: Option<Duration>,
 }
@@ -73,7 +75,7 @@ impl LightClientBuilder {
         Self {
             peers: None,
             connections: None,
-            birthday_height: None,
+            scan_type: ScanType::default(),
             data_dir: None,
             timeout: None,
         }
@@ -96,11 +98,18 @@ impl LightClientBuilder {
         self
     }
 
-    /// Add a wallet "birthday", or block to start searching for transactions _strictly after_.
-    /// Only useful for recovering wallets. If the wallet has a tip that is already higher than the
-    /// height provided, this height will be ignored.
+    /// Add a wallet "birthday", or block to start searching for transactions.
+    /// Implicitly sets the [`ScanType`] to `ScanType::Recovery`.
     pub fn scan_after(mut self, height: u32) -> Self {
-        self.birthday_height = Some(height);
+        self.scan_type = ScanType::Recovery {
+            from_height: height,
+        };
+        self
+    }
+
+    /// Set the [`ScanType`] to sync, recover or start a new wallet.
+    pub fn scan_type(mut self, scan_type: ScanType) -> Self {
+        self.scan_type = scan_type;
         self
     }
 
@@ -117,32 +126,25 @@ impl LightClientBuilder {
         if let Some(whitelist) = self.peers {
             node_builder = node_builder.add_peers(whitelist);
         }
-        match self.birthday_height {
-            Some(birthday) => {
-                // If there is a birthday at a height less than our local chain, we may assume we've
-                // already synced the wallet past the birthday height and no longer
-                // need it.
-                if birthday < wallet.local_chain().tip().height() {
-                    let block_id = wallet.local_chain().tip();
-                    let header_cp = HeaderCheckpoint::new(block_id.height(), block_id.hash());
-                    node_builder = node_builder.anchor_checkpoint(header_cp)
-                } else {
-                    let cp = HeaderCheckpoint::closest_checkpoint_below_height(birthday, network);
-                    node_builder = node_builder.anchor_checkpoint(cp)
-                }
-            }
-            None => {
-                // If there is no birthday provided and the local chain starts at the genesis block,
-                // we assume this is a new wallet and use the most recent
-                // checkpoint. Otherwise we sync from the last known tip in the
-                // LocalChain.
+        match self.scan_type {
+            // This is a no-op because kyoto will start from the latest checkpoint if none is
+            // provided
+            ScanType::New => (),
+            ScanType::Sync => {
                 let block_id = wallet.local_chain().tip();
-                if block_id.height() > 0 {
-                    let header_cp = HeaderCheckpoint::new(block_id.height(), block_id.hash());
-                    node_builder = node_builder.anchor_checkpoint(header_cp)
-                }
+                let header_cp = HeaderCheckpoint::new(block_id.height(), block_id.hash());
+                node_builder = node_builder.anchor_checkpoint(header_cp);
             }
-        }
+            ScanType::Recovery { from_height } => {
+                // Make sure we don't miss the first transaction of the wallet.
+                // The anchor checkpoint is non-inclusive.
+                let birthday = from_height.saturating_sub(1);
+                let header_cp =
+                    HeaderCheckpoint::closest_checkpoint_below_height(birthday, network);
+                node_builder = node_builder.anchor_checkpoint(header_cp);
+            }
+        };
+
         if let Some(dir) = self.data_dir {
             node_builder = node_builder.add_data_dir(dir);
         }
