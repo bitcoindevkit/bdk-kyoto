@@ -42,6 +42,7 @@
 use core::{future::Future, pin::Pin};
 use std::collections::BTreeMap;
 use std::collections::HashSet;
+use std::hash::Hash;
 
 type FutureResult<'a, T, E> = Pin<Box<dyn Future<Output = Result<T, E>> + Send + 'a>>;
 
@@ -66,7 +67,10 @@ pub use kyoto::Receiver;
 pub use kyoto::UnboundedReceiver;
 use kyoto::{BlockHash, Event, IndexedBlock};
 
+use crate::multi::MultiUpdateSubscriber;
+
 pub mod builder;
+pub mod multi;
 
 #[derive(Debug)]
 /// A node and associated structs to send and receive events to and from the node.
@@ -79,6 +83,20 @@ pub struct LightClient {
     pub warning_subscriber: UnboundedReceiver<Warning>,
     /// Receive wallet updates from a node.
     pub update_subscriber: UpdateSubscriber,
+    /// The underlying node that must be run to fetch blocks from peers.
+    pub node: NodeDefault,
+}
+
+/// A node and associated structs to send and receive events to and from the node.
+pub struct MultiLightClient<H: Hash + Eq + Clone + Copy> {
+    /// Send events to a running node (i.e. broadcast a transaction).
+    pub requester: Requester,
+    /// Receive logs from the node as it runs.
+    pub log_subscriber: Receiver<Log>,
+    /// Receive warnings from the node as it runs.
+    pub warning_subscriber: UnboundedReceiver<Warning>,
+    /// Receive wallet updates from a node.
+    pub update_subscriber: MultiUpdateSubscriber<H>,
     /// The underlying node that must be run to fetch blocks from peers.
     pub node: NodeDefault,
 }

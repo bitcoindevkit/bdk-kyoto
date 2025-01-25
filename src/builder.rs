@@ -46,16 +46,25 @@
 //! }
 //! ```
 
-use std::{collections::BTreeMap, net::IpAddr, path::PathBuf, time::Duration};
+use std::{
+    collections::{BTreeMap, HashMap},
+    hash::Hash,
+    net::IpAddr,
+    path::PathBuf,
+    time::Duration,
+};
 
 use bdk_wallet::{chain::IndexedTxGraph, Wallet};
-use kyoto::NodeBuilder;
 pub use kyoto::{
     db::error::SqlInitializationError, AddrV2, HeaderCheckpoint, LogLevel, ScriptBuf, ServiceFlags,
     TrustedPeer,
 };
+use kyoto::{Network, NodeBuilder};
 
-use crate::{LightClient, ScanType, UpdateSubscriber, WalletExt};
+use crate::{
+    multi::{MultiSyncRequest, MultiUpdateSubscriber},
+    LightClient, MultiLightClient, ScanType, UpdateSubscriber, WalletExt,
+};
 
 const RECOMMENDED_PEERS: u8 = 2;
 
@@ -135,13 +144,29 @@ impl LightClientBuilder {
         self
     }
 
+    fn common_builder(&self, network: Network) -> NodeBuilder {
+        let mut node_builder = NodeBuilder::new(network);
+        if let Some(whitelist) = self.peers.clone() {
+            node_builder = node_builder.add_peers(whitelist);
+        }
+        if let Some(dir) = &self.data_dir {
+            node_builder = node_builder.data_dir(dir);
+        }
+        if let Some(duration) = self.timeout {
+            node_builder = node_builder.response_timeout(duration);
+        }
+        if let Some(dns_resolver) = self.dns_resolver {
+            node_builder = node_builder.dns_resolver(dns_resolver);
+        }
+        node_builder = node_builder.log_level(self.log_level);
+        node_builder = node_builder.required_peers(self.connections.unwrap_or(RECOMMENDED_PEERS));
+        node_builder
+    }
+
     /// Build a light client node and a client to interact with the node.
     pub fn build(self, wallet: &Wallet) -> Result<LightClient, SqlInitializationError> {
         let network = wallet.network();
-        let mut node_builder = NodeBuilder::new(network);
-        if let Some(whitelist) = self.peers {
-            node_builder = node_builder.add_peers(whitelist);
-        }
+        let mut node_builder = self.common_builder(network);
         match self.scan_type {
             // This is a no-op because kyoto will start from the latest checkpoint if none is
             // provided
@@ -160,20 +185,8 @@ impl LightClientBuilder {
                 node_builder = node_builder.anchor_checkpoint(header_cp);
             }
         };
-
-        if let Some(dir) = self.data_dir {
-            node_builder = node_builder.data_dir(dir);
-        }
-        if let Some(duration) = self.timeout {
-            node_builder = node_builder.response_timeout(duration);
-        }
-        if let Some(dns_resolver) = self.dns_resolver {
-            node_builder = node_builder.dns_resolver(dns_resolver);
-        }
-        node_builder = node_builder.required_peers(self.connections.unwrap_or(RECOMMENDED_PEERS));
         let (node, kyoto_client) = node_builder
             .add_scripts(wallet.peek_revealed_plus_lookahead())
-            .log_level(self.log_level)
             .build()?;
         let kyoto::Client {
             requester,
@@ -196,10 +209,113 @@ impl LightClientBuilder {
             node,
         })
     }
+
+    /// Built a client and node for multiple wallets.
+    pub fn build_multi<'a, H: Hash + Eq + Clone + Copy>(
+        self,
+        wallet_requests: impl IntoIterator<Item = MultiSyncRequest<'a, H>>,
+    ) -> Result<MultiLightClient<H>, MultiWalletBuilderError> {
+        let wallet_requests: Vec<MultiSyncRequest<'a, H>> = wallet_requests.into_iter().collect();
+        let network_ref = wallet_requests
+            .first()
+            .ok_or(MultiWalletBuilderError::EmptyWalletList)
+            .map(|request| request.wallet.network())?;
+        for network in wallet_requests.iter().map(|req| req.wallet.network()) {
+            if network_ref.ne(&network) {
+                return Err(MultiWalletBuilderError::NetworkMismatch);
+            }
+        }
+        let mut node_builder = self.common_builder(network_ref);
+        let mut checkpoints = Vec::new();
+
+        for wallet_request in wallet_requests.iter() {
+            match wallet_request.scan_type {
+                ScanType::New => (),
+                ScanType::Sync => {
+                    let cp = wallet_request.wallet.latest_checkpoint();
+                    checkpoints.push(HeaderCheckpoint::new(cp.height(), cp.hash()))
+                }
+                ScanType::Recovery { from_height } => {
+                    checkpoints.push(HeaderCheckpoint::closest_checkpoint_below_height(
+                        from_height,
+                        network_ref,
+                    ));
+                }
+            }
+        }
+        if let Some(min) = checkpoints.into_iter().min_by_key(|h| h.height) {
+            node_builder = node_builder.anchor_checkpoint(min);
+        }
+
+        let mut wallet_map = HashMap::new();
+        for wallet_request in wallet_requests {
+            let chain = wallet_request.wallet.local_chain().clone();
+            let keychain_index = wallet_request.wallet.spk_index().clone();
+            let indexed_graph = IndexedTxGraph::new(keychain_index);
+            wallet_map.insert(wallet_request.index, (chain, indexed_graph));
+            node_builder =
+                node_builder.add_scripts(wallet_request.wallet.peek_revealed_plus_lookahead());
+        }
+
+        let (node, kyoto_client) = node_builder.build()?;
+        let kyoto::Client {
+            requester,
+            log_rx,
+            warn_rx,
+            event_rx,
+        } = kyoto_client;
+        let multi_update = MultiUpdateSubscriber {
+            receiver: event_rx,
+            wallet_map,
+            chain_changeset: BTreeMap::new(),
+        };
+        let client = MultiLightClient {
+            requester,
+            log_subscriber: log_rx,
+            warning_subscriber: warn_rx,
+            update_subscriber: multi_update,
+            node,
+        };
+        Ok(client)
+    }
 }
 
 impl Default for LightClientBuilder {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Errors that may occur when attempting to build a node for a list of wallets.
+#[derive(Debug)]
+pub enum MultiWalletBuilderError {
+    /// Two or more wallets do not have the same network configured.
+    NetworkMismatch,
+    /// The database encountered an error when attempting to open a connection.
+    SqlError(SqlInitializationError),
+    /// The list of wallets provided was empty.
+    EmptyWalletList,
+}
+
+impl std::fmt::Display for MultiWalletBuilderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            MultiWalletBuilderError::SqlError(error) => write!(f, "{error}"),
+            MultiWalletBuilderError::NetworkMismatch => write!(
+                f,
+                "two or more wallets do not have the same network configured."
+            ),
+            MultiWalletBuilderError::EmptyWalletList => {
+                write!(f, "no wallets were present in the iterator.")
+            }
+        }
+    }
+}
+
+impl std::error::Error for MultiWalletBuilderError {}
+
+impl From<SqlInitializationError> for MultiWalletBuilderError {
+    fn from(value: SqlInitializationError) -> Self {
+        MultiWalletBuilderError::SqlError(value)
     }
 }
