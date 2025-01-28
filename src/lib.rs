@@ -195,6 +195,21 @@ impl WarningSubscriber {
     }
 }
 
+/// How to scan compact block filters on start up.
+#[derive(Debug, Clone, Copy, Default)]
+pub enum ScanType {
+    /// Start a wallet sync that is known to have no transactions.
+    New,
+    /// Sync the wallet from the last known wallet checkpoint to the rest of the network.
+    #[default]
+    Sync,
+    /// Recover an old wallet by scanning after the specified height.
+    Recovery {
+        /// The height in the block chain to begin searching for transactions.
+        from_height: u32,
+    },
+}
+
 /// Extend the functionality of [`Wallet`](bdk_wallet) for interoperablility
 /// with the light client.
 pub trait WalletExt {

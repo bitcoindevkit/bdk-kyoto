@@ -1,7 +1,7 @@
 use std::net::{IpAddr, Ipv4Addr};
 
 use bdk_kyoto::builder::{LightClientBuilder, ServiceFlags, TrustedPeer};
-use bdk_kyoto::{LightClient, RequesterExt};
+use bdk_kyoto::{LightClient, RequesterExt, ScanType};
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::{KeychainKind, Wallet};
 use tokio::select;
@@ -33,6 +33,11 @@ async fn main() -> anyhow::Result<()> {
         .lookahead(30)
         .create_wallet_no_persist()?;
 
+    // With no persistence, each scan type is a recovery.
+    let scan_type = ScanType::Recovery {
+        from_height: 170_000,
+    };
+
     // The light client builder handles the logic of inserting the SPKs
     let LightClient {
         requester,
@@ -41,7 +46,7 @@ async fn main() -> anyhow::Result<()> {
         mut update_subscriber,
         node,
     } = LightClientBuilder::new()
-        .scan_after(170_000)
+        .scan_type(scan_type)
         .peers(peers)
         .build(&wallet)
         .unwrap();
