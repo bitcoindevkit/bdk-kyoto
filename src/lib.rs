@@ -59,8 +59,10 @@ pub use kyoto::{
     TxBroadcast, TxBroadcastPolicy, Txid, Warning,
 };
 
-use kyoto::Receiver;
-use kyoto::UnboundedReceiver;
+#[doc(inline)]
+pub use kyoto::Receiver;
+#[doc(inline)]
+pub use kyoto::UnboundedReceiver;
 use kyoto::{BlockHash, Event, IndexedBlock};
 
 pub mod builder;
@@ -71,9 +73,9 @@ pub struct LightClient {
     /// Send events to a running node (i.e. broadcast a transaction).
     pub requester: Requester,
     /// Receive logs from the node as it runs.
-    pub log_subscriber: LogSubscriber,
+    pub log_subscriber: Receiver<Log>,
     /// Receive warnings from the node as it runs.
-    pub warning_subscriber: WarningSubscriber,
+    pub warning_subscriber: UnboundedReceiver<Warning>,
     /// Receive wallet updates from a node.
     pub update_subscriber: UpdateSubscriber,
     /// The underlying node that must be run to fetch blocks from peers.
@@ -149,48 +151,6 @@ impl UpdateSubscriber {
             tx_update,
             last_active_indices,
             chain: Some(self.chain.tip()),
-        }
-    }
-}
-
-/// Receive logs from the node as it runs to drive user interface changes.
-#[derive(Debug)]
-pub struct LogSubscriber {
-    receiver: Receiver<Log>,
-}
-
-impl LogSubscriber {
-    pub(crate) fn new(receiver: Receiver<Log>) -> Self {
-        Self { receiver }
-    }
-
-    /// Wait until the node emits a log for an indeterminant amount of time.
-    pub async fn next_log(&mut self) -> Log {
-        loop {
-            if let Some(log) = self.receiver.recv().await {
-                return log;
-            }
-        }
-    }
-}
-
-/// Receive wanrings from the node to act on or to drive user interface changes
-#[derive(Debug)]
-pub struct WarningSubscriber {
-    receiver: UnboundedReceiver<Warning>,
-}
-
-impl WarningSubscriber {
-    pub(crate) fn new(receiver: UnboundedReceiver<Warning>) -> Self {
-        Self { receiver }
-    }
-
-    /// Wait until the node emits a warning for an indeterminant amount of time.
-    pub async fn next_warning(&mut self) -> Warning {
-        loop {
-            if let Some(warning) = self.receiver.recv().await {
-                return warning;
-            }
         }
     }
 }
