@@ -49,11 +49,11 @@
 use std::{collections::BTreeMap, net::IpAddr, path::PathBuf, time::Duration};
 
 use bdk_wallet::{chain::IndexedTxGraph, Wallet};
+use kyoto::NodeBuilder;
 pub use kyoto::{
-    db::error::SqlInitializationError, AddrV2, HeaderCheckpoint, ScriptBuf, ServiceFlags,
+    db::error::SqlInitializationError, AddrV2, HeaderCheckpoint, LogLevel, ScriptBuf, ServiceFlags,
     TrustedPeer,
 };
-use kyoto::{LogLevel, NodeBuilder};
 
 use crate::{LightClient, ScanType, UpdateSubscriber, WalletExt};
 

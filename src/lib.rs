@@ -56,8 +56,8 @@ pub extern crate kyoto;
 pub use kyoto::core::builder::NodeDefault;
 #[doc(inline)]
 pub use kyoto::{
-    FeeRate, Log, LogLevel, NodeState, RejectPayload, RejectReason, Requester, ScriptBuf,
-    SyncUpdate, TxBroadcast, TxBroadcastPolicy, Txid, Warning,
+    FeeRate, Log, NodeState, RejectPayload, RejectReason, Requester, ScriptBuf, SyncUpdate,
+    TxBroadcast, TxBroadcastPolicy, Txid, Warning,
 };
 
 #[doc(inline)]
