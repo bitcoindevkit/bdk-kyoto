@@ -46,14 +46,14 @@
 //! }
 //! ```
 
-use std::{collections::BTreeMap, path::PathBuf, time::Duration};
+use std::{collections::BTreeMap, net::IpAddr, path::PathBuf, time::Duration};
 
 use bdk_wallet::{chain::IndexedTxGraph, Wallet};
-use kyoto::NodeBuilder;
 pub use kyoto::{
     db::error::SqlInitializationError, AddrV2, HeaderCheckpoint, ScriptBuf, ServiceFlags,
     TrustedPeer,
 };
+use kyoto::{LogLevel, NodeBuilder};
 
 use crate::{LightClient, ScanType, UpdateSubscriber, WalletExt};
 
@@ -67,6 +67,8 @@ pub struct LightClientBuilder {
     scan_type: ScanType,
     data_dir: Option<PathBuf>,
     timeout: Option<Duration>,
+    dns_resolver: Option<IpAddr>,
+    log_level: LogLevel,
 }
 
 impl LightClientBuilder {
@@ -78,6 +80,8 @@ impl LightClientBuilder {
             scan_type: ScanType::default(),
             data_dir: None,
             timeout: None,
+            dns_resolver: None,
+            log_level: LogLevel::default(),
         }
     }
     /// Add peers to connect to over the P2P network.
@@ -113,9 +117,21 @@ impl LightClientBuilder {
         self
     }
 
+    /// Set the [`LogLevel`] of the node.
+    pub fn log_level(mut self, log_level: LogLevel) -> Self {
+        self.log_level = log_level;
+        self
+    }
+
     /// Configure the duration of time a remote node has to respond to a message.
     pub fn timeout_duration(mut self, timeout: Duration) -> Self {
         self.timeout = Some(timeout);
+        self
+    }
+
+    /// Configure a DNS resolver to use when querying DNS seeds.
+    pub fn dns_resolver(mut self, ip_addr: impl Into<IpAddr>) -> Self {
+        self.dns_resolver = Some(ip_addr.into());
         self
     }
 
@@ -146,16 +162,19 @@ impl LightClientBuilder {
         };
 
         if let Some(dir) = self.data_dir {
-            node_builder = node_builder.add_data_dir(dir);
+            node_builder = node_builder.data_dir(dir);
         }
         if let Some(duration) = self.timeout {
-            node_builder = node_builder.set_response_timeout(duration)
+            node_builder = node_builder.response_timeout(duration);
         }
-        node_builder =
-            node_builder.num_required_peers(self.connections.unwrap_or(RECOMMENDED_PEERS));
+        if let Some(dns_resolver) = self.dns_resolver {
+            node_builder = node_builder.dns_resolver(dns_resolver);
+        }
+        node_builder = node_builder.required_peers(self.connections.unwrap_or(RECOMMENDED_PEERS));
         let (node, kyoto_client) = node_builder
-            .add_scripts(wallet.peek_revealed_plus_lookahead().collect())
-            .build_node()?;
+            .add_scripts(wallet.peek_revealed_plus_lookahead())
+            .log_level(self.log_level)
+            .build()?;
         let kyoto::Client {
             requester,
             log_rx,
