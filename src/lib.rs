@@ -54,9 +54,10 @@ use bdk_wallet::KeychainKind;
 pub extern crate kyoto;
 
 pub use kyoto::core::builder::NodeDefault;
+#[doc(inline)]
 pub use kyoto::{
-    FeeRate, Log, NodeState, RejectPayload, RejectReason, Requester, ScriptBuf, SyncUpdate,
-    TxBroadcast, TxBroadcastPolicy, Txid, Warning,
+    FeeRate, Log, LogLevel, NodeState, RejectPayload, RejectReason, Requester, ScriptBuf,
+    SyncUpdate, TxBroadcast, TxBroadcastPolicy, Txid, Warning,
 };
 
 #[doc(inline)]
