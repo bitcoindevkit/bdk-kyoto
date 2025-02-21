@@ -79,11 +79,15 @@ async fn main() -> anyhow::Result<()> {
                     requester.add_revealed_scripts(&wallet).await?;
                 }
             },
-            log = log_subscriber.next_log() => {
-                tracing::info!("{log}")
+            log = log_subscriber.recv() => {
+                if let Some(log) = log {
+                    tracing::info!("{log}")
+                }
             }
-            warn = warning_subscriber.next_warning() => {
-                tracing::warn!("{warn}")
+            warn = warning_subscriber.recv() => {
+                if let Some(warn) = warn {
+                    tracing::warn!("{warn}")
+                }
             }
         }
     }

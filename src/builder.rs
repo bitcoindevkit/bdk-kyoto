@@ -55,7 +55,7 @@ pub use kyoto::{
     TrustedPeer,
 };
 
-use crate::{LightClient, LogSubscriber, ScanType, UpdateSubscriber, WalletExt, WarningSubscriber};
+use crate::{LightClient, ScanType, UpdateSubscriber, WalletExt};
 
 const RECOMMENDED_PEERS: u8 = 2;
 
@@ -171,8 +171,8 @@ impl LightClientBuilder {
         };
         Ok(LightClient {
             requester,
-            log_subscriber: LogSubscriber::new(log_rx),
-            warning_subscriber: WarningSubscriber::new(warn_rx),
+            log_subscriber: log_rx,
+            warning_subscriber: warn_rx,
             update_subscriber,
             node,
         })
