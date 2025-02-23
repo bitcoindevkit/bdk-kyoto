@@ -26,3 +26,6 @@ tracing-subscriber = { version = "0.3" }
 
 [[example]]
 name = "example"
+
+[[example]]
+name = "multi"
