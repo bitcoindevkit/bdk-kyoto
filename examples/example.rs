@@ -53,7 +53,7 @@ async fn main() -> anyhow::Result<()> {
 
     tokio::task::spawn(async move { node.run().await });
 
-    // Sync and apply updates. We can do this a continual loop while the "application" is running.
+    // Sync and apply updates. We can do this in a continual loop while the "application" is running.
     // Often this would occur on a separate thread than the underlying application user interface.
     loop {
         select! {
