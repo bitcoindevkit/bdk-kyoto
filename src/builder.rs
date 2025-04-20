@@ -31,7 +31,14 @@
 //!
 //!     let scan_type = ScanType::Recovery { from_height: 200_000 };
 //!
-//!     let LightClient { requester, log_subscriber, warning_subscriber, update_subscriber, node } = LightClientBuilder::new()
+//!     let LightClient {
+//!         requester,
+//!         log_subscriber,
+//!         info_subscriber,
+//!         warning_subscriber,
+//!         update_subscriber,
+//!         node
+//!     } = LightClientBuilder::new()
 //!         // Configure the scan to recover the wallet
 //!         .scan_type(scan_type)
 //!         // A node may handle mutliple connections
@@ -46,7 +53,12 @@
 //! }
 //! ```
 
-use std::{collections::BTreeMap, net::IpAddr, path::PathBuf, time::Duration};
+use std::{
+    collections::BTreeMap,
+    net::{IpAddr, SocketAddr},
+    path::PathBuf,
+    time::Duration,
+};
 
 use bdk_wallet::{chain::IndexedTxGraph, Wallet};
 use kyoto::NodeBuilder;
@@ -68,6 +80,7 @@ pub struct LightClientBuilder {
     data_dir: Option<PathBuf>,
     timeout: Option<Duration>,
     dns_resolver: Option<IpAddr>,
+    proxy: Option<SocketAddr>,
     log_level: LogLevel,
 }
 
@@ -81,6 +94,7 @@ impl LightClientBuilder {
             data_dir: None,
             timeout: None,
             dns_resolver: None,
+            proxy: None,
             log_level: LogLevel::default(),
         }
     }
@@ -135,6 +149,12 @@ impl LightClientBuilder {
         self
     }
 
+    /// Connect to peers over Tor by providing a Socks5 proxy.
+    pub fn socks5_proxy(mut self, socket_addr: impl Into<SocketAddr>) -> Self {
+        self.proxy = Some(socket_addr.into());
+        self
+    }
+
     /// Build a light client node and a client to interact with the node.
     pub fn build(self, wallet: &Wallet) -> Result<LightClient, SqlInitializationError> {
         let network = wallet.network();
@@ -170,6 +190,9 @@ impl LightClientBuilder {
         if let Some(dns_resolver) = self.dns_resolver {
             node_builder = node_builder.dns_resolver(dns_resolver);
         }
+        if let Some(proxy) = self.proxy {
+            node_builder = node_builder.socks5_proxy(proxy);
+        }
         node_builder = node_builder.required_peers(self.connections.unwrap_or(RECOMMENDED_PEERS));
         let (node, kyoto_client) = node_builder
             .add_scripts(wallet.peek_revealed_plus_lookahead())
@@ -178,6 +201,7 @@ impl LightClientBuilder {
         let kyoto::Client {
             requester,
             log_rx,
+            info_rx,
             warn_rx,
             event_rx,
         } = kyoto_client;
@@ -191,6 +215,7 @@ impl LightClientBuilder {
         Ok(LightClient {
             requester,
             log_subscriber: log_rx,
+            info_subscriber: info_rx,
             warning_subscriber: warn_rx,
             update_subscriber,
             node,

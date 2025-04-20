@@ -42,6 +42,7 @@ async fn main() -> anyhow::Result<()> {
     let LightClient {
         requester,
         mut log_subscriber,
+        mut info_subscriber,
         mut warning_subscriber,
         mut update_subscriber,
         node,
@@ -76,12 +77,17 @@ async fn main() -> anyhow::Result<()> {
                         "Broadcast minimum fee rate: {:#}",
                         fee_filter
                     );
-                    requester.add_revealed_scripts(&wallet).await?;
+                    requester.add_revealed_scripts(&wallet)?;
                 }
             },
             log = log_subscriber.recv() => {
                 if let Some(log) = log {
                     tracing::info!("{log}")
+                }
+            }
+            info = info_subscriber.recv() => {
+                if let Some(info) = info {
+                    tracing::info!("{info}")
                 }
             }
             warn = warning_subscriber.recv() => {

@@ -120,7 +120,7 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
         [(KeychainKind::External, index)].into()
     );
 
-    requester.shutdown().await?;
+    requester.shutdown()?;
 
     Ok(())
 }
@@ -187,7 +187,7 @@ async fn update_handles_reorg() -> anyhow::Result<()> {
     assert_eq!(anchor.block_id.hash, new_blockhash);
     wallet.apply_update(res).unwrap();
 
-    requester.shutdown().await?;
+    requester.shutdown()?;
 
     Ok(())
 }
@@ -237,7 +237,7 @@ async fn update_handles_dormant_wallet() -> anyhow::Result<()> {
     wallet.apply_update(res).unwrap();
 
     // shut down then reorg
-    requester.shutdown().await?;
+    requester.shutdown()?;
 
     let hashes = env.reorg(1)?; // 102
     let new_blockhash = hashes[0];
@@ -265,7 +265,7 @@ async fn update_handles_dormant_wallet() -> anyhow::Result<()> {
     assert_eq!(anchor.block_id.hash, new_blockhash);
     wallet.apply_update(res).unwrap();
 
-    requester.shutdown().await?;
+    requester.shutdown()?;
 
     Ok(())
 }
