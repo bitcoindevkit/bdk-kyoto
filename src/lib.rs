@@ -3,15 +3,15 @@
 //!
 //! If you have an existing project that leverages `bdk_wallet`, building the compact block filter
 //! _node_ and _client_ is simple. You may construct and configure a node to integrate with your
-//! wallet by using a [`LightClientBuilder`](crate).
+//! wallet by using the [`BuilderExt`](crate::builder) and [`NodeBuilder`](crate::builder).
 //!
 //! ```no_run
 //! # const RECEIVE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/0/*)";
 //! # const CHANGE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/1/*)";
 //! use bdk_wallet::Wallet;
 //! use bdk_wallet::bitcoin::Network;
-//! use bdk_kyoto::builder::LightClientBuilder;
-//! use bdk_kyoto::LightClient;
+//! use bdk_kyoto::builder::{NodeBuilder, NodeBuilderExt};
+//! use bdk_kyoto::{LightClient, ScanType};
 //!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {
@@ -26,7 +26,7 @@
 //!         warning_subscriber: _,
 //!         mut update_subscriber,
 //!         node
-//!     } = LightClientBuilder::new().build(&wallet)?;
+//!     } = NodeBuilder::new(Network::Signet).build_with_wallet(&wallet, ScanType::New)?;
 //!
 //!     tokio::task::spawn(async move { node.run().await });
 //!
@@ -55,7 +55,7 @@ pub use kyoto::builder::NodeDefault;
 #[doc(inline)]
 pub use kyoto::{
     ClientError, FeeRate, Info, NodeState, RejectPayload, RejectReason, Requester, ScriptBuf,
-    SyncUpdate, TxBroadcast, TxBroadcastPolicy, Txid, Warning,
+    SyncUpdate, TrustedPeer, TxBroadcast, TxBroadcastPolicy, Txid, Warning,
 };
 
 #[doc(inline)]
@@ -63,6 +63,9 @@ pub use kyoto::Receiver;
 #[doc(inline)]
 pub use kyoto::UnboundedReceiver;
 use kyoto::{BlockHash, Event, IndexedBlock};
+
+#[doc(inline)]
+pub use builder::NodeBuilderExt;
 
 pub mod builder;
 

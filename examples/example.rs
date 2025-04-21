@@ -1,8 +1,8 @@
 use std::net::{IpAddr, Ipv4Addr};
 
-use bdk_kyoto::builder::{LightClientBuilder, ServiceFlags, TrustedPeer};
-use bdk_kyoto::{LightClient, RequesterExt, ScanType};
-use bdk_wallet::bitcoin::Network;
+use bdk_kyoto::builder::{NodeBuilder, NodeBuilderExt};
+use bdk_kyoto::{LightClient, RequesterExt, ScanType, TrustedPeer};
+use bdk_wallet::bitcoin::{p2p::ServiceFlags, Network};
 use bdk_wallet::{KeychainKind, Wallet};
 use tokio::select;
 
@@ -19,7 +19,7 @@ async fn main() -> anyhow::Result<()> {
     let subscriber = tracing_subscriber::FmtSubscriber::new();
     tracing::subscriber::set_global_default(subscriber)?;
 
-    let peers = PEERS
+    let peers: Vec<TrustedPeer> = PEERS
         .iter()
         .map(|ip| {
             let mut peer = TrustedPeer::from_ip(*ip);
@@ -46,10 +46,9 @@ async fn main() -> anyhow::Result<()> {
         mut warning_subscriber,
         mut update_subscriber,
         node,
-    } = LightClientBuilder::new()
-        .scan_type(scan_type)
-        .peers(peers)
-        .build(&wallet)
+    } = NodeBuilder::new(Network::Signet)
+        .add_peers(peers)
+        .build_with_wallet(&wallet, scan_type)
         .unwrap();
 
     tokio::task::spawn(async move { node.run().await });
