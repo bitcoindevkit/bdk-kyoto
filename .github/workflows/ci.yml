@@ -7,35 +7,30 @@ on:
   pull_request:
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  check:
     strategy:
       matrix:
-        rust:
-          - toolchain: stable
-          - toolchain: 1.63.0
+        toolchain: [stable, beta, nightly]
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@v1
+      - uses: actions/checkout@v4
+      - uses: extractions/setup-just@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-            toolchain: ${{ matrix.rust.toolchain }}
-            components: clippy, rustfmt
-      - name: Pin dependencies for MSRV
-        if: matrix.rust.toolchain == '1.63.0'
-        run: |
-          cargo update -p zstd-sys --precise "2.0.8+zstd.1.5.5"
-          cargo update -p time --precise "0.3.20"
-          cargo update -p home --precise "0.5.5"
-          cargo update -p tokio --precise "1.37.0"
-      - name: Lint all targets
-        run: cargo clippy --all-targets
-      - name: Format
-        run: cargo fmt -- --check
-      - name: Build with default features
-        run: cargo build --verbose
-      - name: Check release build on Rust ${{ matrix.rust.toolchain }}
-        run: cargo check --release --verbose --color always
-      - name: Test
-        run: cargo test --verbose
+          toolchain: ${{ matrix.toolchain }}
+          components: clippy,rustfmt
+      - run: just check
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: extractions/setup-just@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - run: just test integration
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: extractions/setup-just@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - run: just test msrv

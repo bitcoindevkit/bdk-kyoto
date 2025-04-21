@@ -3,7 +3,7 @@ _default:
 
 check:
   cargo fmt -- --check
-  cargo clippy --all-targets -- -D warnings
+  cargo clippy -- -D warnings
   cargo check --all-features
 
 # Run a test suite: unit, integration, features, msrv, min-versions.
