@@ -22,6 +22,7 @@
 //!     let LightClient {
 //!         requester,
 //!         log_subscriber: _,
+//!         info_subscriber: _,
 //!         warning_subscriber: _,
 //!         mut update_subscriber,
 //!         node
@@ -39,11 +40,8 @@
 //! ```
 
 #![warn(missing_docs)]
-use core::{future::Future, pin::Pin};
 use std::collections::BTreeMap;
 use std::collections::HashSet;
-
-type FutureResult<'a, T, E> = Pin<Box<dyn Future<Output = Result<T, E>> + Send + 'a>>;
 
 pub use bdk_wallet::Update;
 
@@ -53,11 +51,11 @@ use bdk_wallet::KeychainKind;
 
 pub extern crate kyoto;
 
-pub use kyoto::core::builder::NodeDefault;
+pub use kyoto::builder::NodeDefault;
 #[doc(inline)]
 pub use kyoto::{
-    FeeRate, Log, NodeState, RejectPayload, RejectReason, Requester, ScriptBuf, SyncUpdate,
-    TxBroadcast, TxBroadcastPolicy, Txid, Warning,
+    ClientError, FeeRate, Info, NodeState, RejectPayload, RejectReason, Requester, ScriptBuf,
+    SyncUpdate, TxBroadcast, TxBroadcastPolicy, Txid, Warning,
 };
 
 #[doc(inline)]
@@ -74,7 +72,9 @@ pub struct LightClient {
     /// Send events to a running node (i.e. broadcast a transaction).
     pub requester: Requester,
     /// Receive logs from the node as it runs.
-    pub log_subscriber: Receiver<Log>,
+    pub log_subscriber: Receiver<String>,
+    /// Receive informational messages as the node runs.
+    pub info_subscriber: Receiver<Info>,
     /// Receive warnings from the node as it runs.
     pub warning_subscriber: UnboundedReceiver<Warning>,
     /// Receive wallet updates from a node.
@@ -199,26 +199,20 @@ pub trait RequesterExt {
     fn add_revealed_scripts<'a>(
         &'a self,
         wallet: &'a bdk_wallet::Wallet,
-    ) -> FutureResult<'a, (), kyoto::ClientError>;
+    ) -> Result<(), ClientError>;
 }
 
 impl RequesterExt for Requester {
     fn add_revealed_scripts<'a>(
         &'a self,
         wallet: &'a bdk_wallet::Wallet,
-    ) -> FutureResult<'a, (), kyoto::ClientError> {
-        async fn _add_revealed(
-            requester: &Requester,
-            wallet: &bdk_wallet::Wallet,
-        ) -> Result<(), kyoto::ClientError> {
-            for keychain in [KeychainKind::External, KeychainKind::Internal] {
-                let scripts = wallet.spk_index().revealed_keychain_spks(keychain);
-                for (_, script) in scripts {
-                    requester.add_script(script).await?;
-                }
+    ) -> Result<(), ClientError> {
+        for keychain in [KeychainKind::External, KeychainKind::Internal] {
+            let scripts = wallet.spk_index().revealed_keychain_spks(keychain);
+            for (_, script) in scripts {
+                self.add_script(script)?;
             }
-            Ok(())
         }
-        Box::pin(_add_revealed(self, wallet))
+        Ok(())
     }
 }
