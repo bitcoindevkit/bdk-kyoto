@@ -1,13 +1,12 @@
 // #![allow(unused)]
-use bdk_kyoto::LightClient;
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::task;
 use tokio::time;
 
-use bdk_kyoto::builder::LightClientBuilder;
-use bdk_kyoto::builder::TrustedPeer;
+use bdk_kyoto::builder::{NodeBuilder, NodeBuilderExt};
+use bdk_kyoto::{LightClient, ScanType, TrustedPeer};
 use bdk_testenv::bitcoincore_rpc::RpcApi;
 use bdk_testenv::bitcoind;
 use bdk_testenv::TestEnv;
@@ -49,11 +48,11 @@ fn init_node(
     let port = peer.port();
     let mut peer = TrustedPeer::from_ip(ip);
     peer.port = Some(port);
-    Ok(LightClientBuilder::new()
-        .peers(vec![peer])
+    Ok(NodeBuilder::new(Network::Regtest)
+        .add_peer(peer)
         .data_dir(tempdir)
-        .connections(1)
-        .build(wallet)?)
+        .required_peers(1)
+        .build_with_wallet(wallet, ScanType::Sync)?)
 }
 
 #[tokio::test]

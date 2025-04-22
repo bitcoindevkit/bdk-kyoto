@@ -28,7 +28,7 @@ _test-min-versions:
 # Check code with MSRV compiler.
 _test-msrv:
   cargo install cargo-msrv@0.18.4
-  cargo msrv verify --all-features
+  cargo msrv verify
 
 # Run the example: example.
 example name="example":
