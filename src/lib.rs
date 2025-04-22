@@ -31,10 +31,9 @@
 //!     tokio::task::spawn(async move { node.run().await });
 //!
 //!     loop {
-//!         if let Some(update) = update_subscriber.update().await {
-//!             wallet.apply_update(update)?;
-//!             return Ok(());
-//!         }
+//!         let update = update_subscriber.update().await;
+//!         wallet.apply_update(update)?;
+//!         return Ok(());
 //!     }
 //! }
 //! ```
@@ -104,7 +103,7 @@ impl UpdateSubscriber {
     /// Return the most recent update from the node once it has synced to the network's tip.
     /// This may take a significant portion of time during wallet recoveries or dormant wallets.
     /// Note that you may call this method in a loop as long as the node is running.
-    pub async fn update(&mut self) -> Option<Update> {
+    pub async fn update(&mut self) -> Update {
         while let Some(message) = self.receiver.recv().await {
             match message {
                 Event::Block(IndexedBlock { height, block }) => {
@@ -119,16 +118,9 @@ impl UpdateSubscriber {
                     }
                 }
                 Event::Synced(SyncUpdate {
-                    tip,
+                    tip: _,
                     recent_history,
                 }) => {
-                    if self.chain_changeset.is_empty()
-                        && self.chain.tip().height() == tip.height
-                        && self.chain.tip().hash() == tip.hash
-                    {
-                        // return early if we're already synced
-                        return None;
-                    }
                     recent_history.into_iter().for_each(|(height, header)| {
                         self.chain_changeset
                             .insert(height, Some(header.block_hash()));
@@ -137,7 +129,7 @@ impl UpdateSubscriber {
                 }
             }
         }
-        Some(self.get_scan_response())
+        self.get_scan_response()
     }
 
     // When the client is believed to have synced to the chain tip of most work,
