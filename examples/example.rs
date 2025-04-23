@@ -58,26 +58,24 @@ async fn main() -> anyhow::Result<()> {
     loop {
         select! {
             update = update_subscriber.update() => {
-                if let Some(update) = update {
-                    wallet.apply_update(update)?;
-                    tracing::info!("Tx count: {}", wallet.transactions().count());
-                    tracing::info!("Balance: {}", wallet.balance().total().to_sat());
-                    let last_revealed = wallet.derivation_index(KeychainKind::External);
-                    tracing::info!("Last revealed External: {:?}", last_revealed);
-                    tracing::info!(
-                        "Last revealed Internal: {:?}",
-                        wallet.derivation_index(KeychainKind::Internal)
-                    );
-                    tracing::info!("Local chain tip: {}", wallet.local_chain().tip().height());
-                    let next = wallet.reveal_next_address(KeychainKind::External).address;
-                    tracing::info!("Next receiving address: {next}");
-                    let fee_filter = requester.broadcast_min_feerate().await.unwrap();
-                    tracing::info!(
-                        "Broadcast minimum fee rate: {:#}",
-                        fee_filter
-                    );
-                    requester.add_revealed_scripts(&wallet)?;
-                }
+                wallet.apply_update(update)?;
+                tracing::info!("Tx count: {}", wallet.transactions().count());
+                tracing::info!("Balance: {}", wallet.balance().total().to_sat());
+                let last_revealed = wallet.derivation_index(KeychainKind::External);
+                tracing::info!("Last revealed External: {:?}", last_revealed);
+                tracing::info!(
+                    "Last revealed Internal: {:?}",
+                    wallet.derivation_index(KeychainKind::Internal)
+                );
+                tracing::info!("Local chain tip: {}", wallet.local_chain().tip().height());
+                let next = wallet.reveal_next_address(KeychainKind::External).address;
+                tracing::info!("Next receiving address: {next}");
+                let fee_filter = requester.broadcast_min_feerate().await.unwrap();
+                tracing::info!(
+                    "Broadcast minimum fee rate: {:#}",
+                    fee_filter
+                );
+                requester.add_revealed_scripts(&wallet)?;
             },
             log = log_subscriber.recv() => {
                 if let Some(log) = log {
