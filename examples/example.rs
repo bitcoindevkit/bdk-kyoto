@@ -1,7 +1,7 @@
 use std::net::{IpAddr, Ipv4Addr};
 
 use bdk_kyoto::builder::{NodeBuilder, NodeBuilderExt};
-use bdk_kyoto::{LightClient, RequesterExt, ScanType, TrustedPeer};
+use bdk_kyoto::{Client, RequesterExt, ScanType, TrustedPeer};
 use bdk_wallet::bitcoin::{p2p::ServiceFlags, Network};
 use bdk_wallet::{KeychainKind, Wallet};
 use tokio::select;
@@ -39,17 +39,17 @@ async fn main() -> anyhow::Result<()> {
     };
 
     // The light client builder handles the logic of inserting the SPKs
-    let LightClient {
+    let (client, mut update_subscriber, node) = NodeBuilder::new(Network::Signet)
+        .add_peers(peers)
+        .build_with_wallet(&wallet, scan_type)
+        .unwrap();
+
+    let Client {
         requester,
         mut log_subscriber,
         mut info_subscriber,
         mut warning_subscriber,
-        mut update_subscriber,
-        node,
-    } = NodeBuilder::new(Network::Signet)
-        .add_peers(peers)
-        .build_with_wallet(&wallet, scan_type)
-        .unwrap();
+    } = client;
 
     tokio::task::spawn(async move { node.run().await });
 

@@ -11,7 +11,7 @@
 //! use bdk_wallet::Wallet;
 //! use bdk_wallet::bitcoin::Network;
 //! use bdk_kyoto::builder::{NodeBuilder, NodeBuilderExt};
-//! use bdk_kyoto::{LightClient, ScanType};
+//! use bdk_kyoto::{Client, ScanType};
 //!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {
@@ -19,14 +19,13 @@
 //!         .network(Network::Signet)
 //!         .create_wallet_no_persist()?;
 //!
-//!     let LightClient {
+//!     let (client, mut update_subscriber, node) = NodeBuilder::new(Network::Signet).build_with_wallet(&wallet, ScanType::New)?;
+//!     let Client {
 //!         requester,
 //!         log_subscriber: _,
 //!         info_subscriber: _,
 //!         warning_subscriber: _,
-//!         mut update_subscriber,
-//!         node
-//!     } = NodeBuilder::new(Network::Signet).build_with_wallet(&wallet, ScanType::New)?;
+//!     } = client;
 //!
 //!     tokio::task::spawn(async move { node.run().await });
 //!
@@ -67,10 +66,11 @@ use kyoto::{BlockHash, Event, IndexedBlock};
 pub use builder::NodeBuilderExt;
 
 pub mod builder;
+pub mod multi;
 
 #[derive(Debug)]
 /// A node and associated structs to send and receive events to and from the node.
-pub struct LightClient {
+pub struct Client {
     /// Send events to a running node (i.e. broadcast a transaction).
     pub requester: Requester,
     /// Receive logs from the node as it runs.
@@ -79,10 +79,6 @@ pub struct LightClient {
     pub info_subscriber: Receiver<Info>,
     /// Receive warnings from the node as it runs.
     pub warning_subscriber: UnboundedReceiver<Warning>,
-    /// Receive wallet updates from a node.
-    pub update_subscriber: UpdateSubscriber,
-    /// The underlying node that must be run to fetch blocks from peers.
-    pub node: NodeDefault,
 }
 
 /// Interpret events from a node that is running to apply
@@ -164,33 +160,6 @@ pub enum ScanType {
         /// The height in the block chain to begin searching for transactions.
         from_height: u32,
     },
-}
-
-/// An identifier for a wallet when performing multiple syncs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, std::hash::Hash)]
-pub struct WalletId(u16);
-
-impl WalletId {
-    /// Wallet one
-    pub const ONE: WalletId = WalletId(1);
-    /// Wallet two
-    pub const TWO: WalletId = WalletId(2);
-    /// Wallet three
-    pub const THREE: WalletId = WalletId(3);
-    /// Wallet four
-    pub const FOUR: WalletId = WalletId(4);
-    /// Wallet five
-    pub const FIVE: WalletId = WalletId(5);
-    /// Wallet six
-    pub const SIX: WalletId = WalletId(6);
-    /// Wallet seven
-    pub const SEVEN: WalletId = WalletId(7);
-    /// Wallet eight
-    pub const EIGHT: WalletId = WalletId(8);
-    /// Wallet nine
-    pub const NINE: WalletId = WalletId(9);
-    /// Wallet ten
-    pub const TEN: WalletId = WalletId(10);
 }
 
 /// Extend the functionality of [`Wallet`](bdk_wallet) for interoperablility
