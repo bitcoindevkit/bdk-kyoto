@@ -166,6 +166,33 @@ pub enum ScanType {
     },
 }
 
+/// An identifier for a wallet when performing multiple syncs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, std::hash::Hash)]
+pub struct WalletId(u16);
+
+impl WalletId {
+    /// Wallet one
+    pub const ONE: WalletId = WalletId(1);
+    /// Wallet two
+    pub const TWO: WalletId = WalletId(2);
+    /// Wallet three
+    pub const THREE: WalletId = WalletId(3);
+    /// Wallet four
+    pub const FOUR: WalletId = WalletId(4);
+    /// Wallet five
+    pub const FIVE: WalletId = WalletId(5);
+    /// Wallet six
+    pub const SIX: WalletId = WalletId(6);
+    /// Wallet seven
+    pub const SEVEN: WalletId = WalletId(7);
+    /// Wallet eight
+    pub const EIGHT: WalletId = WalletId(8);
+    /// Wallet nine
+    pub const NINE: WalletId = WalletId(9);
+    /// Wallet ten
+    pub const TEN: WalletId = WalletId(10);
+}
+
 /// Extend the functionality of [`Wallet`](bdk_wallet) for interoperablility
 /// with the light client.
 pub trait WalletExt {
