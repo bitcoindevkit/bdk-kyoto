@@ -38,7 +38,7 @@
 //!         update_subscriber,
 //!         node
 //!     } = NodeBuilder::new(Network::Signet)
-//!         // A node may handle mutliple connections
+//!         // A node may handle multiple connections
 //!         .required_peers(2)
 //!         // Choose where to store node data
 //!         .data_dir(db_path)
@@ -51,7 +51,7 @@
 //! }
 //! ```
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, fmt::Display};
 
 use bdk_wallet::{chain::IndexedTxGraph, Wallet};
 use kyoto::HeaderCheckpoint;
@@ -66,7 +66,7 @@ pub trait NodeBuilderExt {
         self,
         wallet: &Wallet,
         scan_type: ScanType,
-    ) -> Result<LightClient, SqlInitializationError>;
+    ) -> Result<LightClient, BuilderError>;
 }
 
 impl NodeBuilderExt for NodeBuilder {
@@ -74,8 +74,11 @@ impl NodeBuilderExt for NodeBuilder {
         mut self,
         wallet: &Wallet,
         scan_type: ScanType,
-    ) -> Result<LightClient, SqlInitializationError> {
+    ) -> Result<LightClient, BuilderError> {
         let network = wallet.network();
+        if self.network().ne(&network) {
+            return Err(BuilderError::NetworkMismatch);
+        }
         let scripts = wallet.peek_revealed_plus_lookahead();
         self = self.add_scripts(scripts);
         match scan_type {
@@ -119,5 +122,33 @@ impl NodeBuilderExt for NodeBuilder {
             update_subscriber,
             node,
         })
+    }
+}
+
+/// Errors the builder may throw.
+#[derive(Debug)]
+pub enum BuilderError {
+    /// The database failed to open.
+    IO(SqlInitializationError),
+    /// The wallet network and node network do not match.
+    NetworkMismatch,
+}
+
+impl Display for BuilderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BuilderError::IO(e) => write!(f, "failed to initialize the db: {e}"),
+            BuilderError::NetworkMismatch => {
+                write!(f, "wallet network and node network do not match")
+            }
+        }
+    }
+}
+
+impl std::error::Error for BuilderError {}
+
+impl From<SqlInitializationError> for BuilderError {
+    fn from(value: SqlInitializationError) -> Self {
+        BuilderError::IO(value)
     }
 }
