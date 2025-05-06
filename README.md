@@ -1,6 +1,6 @@
 # BDK Kyoto
 
-BDK-Kyoto is an extension of [Kyoto](https://github.com/rustaceanrob/kyoto), a client-side implementation of BIP157/BIP158.
+BDK-Kyoto is an extension of [Kyoto](https://github.com/2140-dev/kyoto), a client-side implementation of BIP157/BIP158.
 These proposals define a way for users to fetch transactions privately, using _compact block filters_.
 You may want to read the specification [here](https://github.com/bitcoin/bips/blob/master/bip-0158.mediawiki).
 Kyoto runs as a psuedo-node, sending messages over the Bitcoin peer-to-peer layer, finding new peers to connect to, and managing a
