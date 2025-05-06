@@ -85,7 +85,7 @@ impl NodeBuilderExt for NodeBuilder {
             ScanType::Sync => {
                 let block_id = wallet.local_chain().tip();
                 let header_cp = HeaderCheckpoint::new(block_id.height(), block_id.hash());
-                self = self.anchor_checkpoint(header_cp);
+                self = self.after_checkpoint(header_cp);
             }
             ScanType::Recovery { from_height } => {
                 // Make sure we don't miss the first transaction of the wallet.
@@ -93,7 +93,7 @@ impl NodeBuilderExt for NodeBuilder {
                 let birthday = from_height.saturating_sub(1);
                 let header_cp =
                     HeaderCheckpoint::closest_checkpoint_below_height(birthday, network);
-                self = self.anchor_checkpoint(header_cp);
+                self = self.after_checkpoint(header_cp);
             }
         };
         let (node, client) = self.build()?;
