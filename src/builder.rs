@@ -51,8 +51,6 @@
 //! }
 //! ```
 
-use std::{collections::BTreeMap, fmt::Display};
-
 use bdk_wallet::{chain::IndexedTxGraph, Wallet};
 use kyoto::HeaderCheckpoint;
 pub use kyoto::{db::error::SqlInitializationError, NodeBuilder};
@@ -86,8 +84,8 @@ impl NodeBuilderExt for NodeBuilder {
             // provided
             ScanType::New => (),
             ScanType::Sync => {
-                let block_id = wallet.local_chain().tip();
-                let header_cp = HeaderCheckpoint::new(block_id.height(), block_id.hash());
+                let block_id = wallet.latest_checkpoint().block_id();
+                let header_cp = HeaderCheckpoint::new(block_id.height, block_id.hash);
                 self = self.after_checkpoint(header_cp);
             }
             ScanType::Recovery { from_height } => {
@@ -98,7 +96,7 @@ impl NodeBuilderExt for NodeBuilder {
                     HeaderCheckpoint::closest_checkpoint_below_height(birthday, network);
                 self = self.after_checkpoint(header_cp);
             }
-        };
+        }
         let (node, client) = self.build()?;
         let kyoto::Client {
             requester,
@@ -110,9 +108,8 @@ impl NodeBuilderExt for NodeBuilder {
         let indexed_graph = IndexedTxGraph::new(wallet.spk_index().clone());
         let update_subscriber = UpdateSubscriber {
             receiver: event_rx,
-            chain: wallet.local_chain().clone(),
+            cp: wallet.local_chain().tip(),
             graph: indexed_graph,
-            chain_changeset: BTreeMap::new(),
         };
         Ok(LightClient {
             requester,
@@ -134,7 +131,7 @@ pub enum BuilderError {
     NetworkMismatch,
 }
 
-impl Display for BuilderError {
+impl std::fmt::Display for BuilderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             BuilderError::IO(e) => write!(f, "failed to initialize the db: {e}"),

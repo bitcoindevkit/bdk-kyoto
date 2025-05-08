@@ -165,8 +165,8 @@ async fn update_handles_reorg() -> anyhow::Result<()> {
     // reorg
     let hashes = env.reorg(1)?; // 102
     let new_blockhash = hashes[0];
-    _ = env.mine_blocks(2, Some(miner))?; // 103
-    wait_for_height(&env, 103).await?;
+    _ = env.mine_blocks(2, Some(miner))?; // 104
+    wait_for_height(&env, 104).await?;
 
     // expect tx to confirm at same height but different blockhash
     let res = update_subscriber.update().await;

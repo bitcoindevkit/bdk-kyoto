@@ -39,13 +39,12 @@
 //! ```
 
 #![warn(missing_docs)]
-use std::collections::BTreeMap;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 pub use bdk_wallet::Update;
 
 use bdk_wallet::chain::{keychain_txout::KeychainTxOutIndex, local_chain, IndexedTxGraph};
-use bdk_wallet::chain::{ConfirmationBlockTime, TxUpdate};
+use bdk_wallet::chain::{BlockId, ConfirmationBlockTime, TxUpdate};
 use bdk_wallet::KeychainKind;
 
 pub extern crate kyoto;
@@ -61,7 +60,7 @@ pub use kyoto::{
 pub use kyoto::Receiver;
 #[doc(inline)]
 pub use kyoto::UnboundedReceiver;
-use kyoto::{BlockHash, Event, IndexedBlock};
+use kyoto::{Event, IndexedBlock};
 
 #[doc(inline)]
 pub use builder::NodeBuilderExt;
@@ -91,12 +90,10 @@ pub struct LightClient {
 pub struct UpdateSubscriber {
     // channel receiver
     receiver: UnboundedReceiver<Event>,
-    // changes to local chain
-    chain: local_chain::LocalChain,
+    // local checkpoint
+    cp: local_chain::CheckPoint,
     // receive graph
     graph: IndexedTxGraph<ConfirmationBlockTime, KeychainTxOutIndex<KeychainKind>>,
-    // staged changes for the chain
-    chain_changeset: BTreeMap<u32, Option<BlockHash>>,
 }
 
 impl UpdateSubscriber {
@@ -104,49 +101,44 @@ impl UpdateSubscriber {
     /// This may take a significant portion of time during wallet recoveries or dormant wallets.
     /// Note that you may call this method in a loop as long as the node is running.
     pub async fn update(&mut self) -> Update {
+        let mut blocks = BTreeMap::new();
         while let Some(message) = self.receiver.recv().await {
             match message {
                 Event::Block(IndexedBlock { height, block }) => {
                     let hash = block.header.block_hash();
-                    self.chain_changeset.insert(height, Some(hash));
+                    blocks.insert(height, hash);
                     let _ = self.graph.apply_block_relevant(&block, height);
                 }
-                Event::BlocksDisconnected(headers) => {
-                    for header in headers {
-                        let height = header.height;
-                        self.chain_changeset.insert(height, None);
-                    }
-                }
+                Event::BlocksDisconnected(headers) => for _header in headers {},
                 Event::Synced(SyncUpdate {
                     tip: _,
                     recent_history,
                 }) => {
-                    recent_history.into_iter().for_each(|(height, header)| {
-                        self.chain_changeset
-                            .insert(height, Some(header.block_hash()));
-                    });
+                    for (height, header) in recent_history {
+                        blocks.insert(height, header.block_hash());
+                    }
                     break;
                 }
             }
         }
-        self.get_scan_response()
-    }
 
-    // When the client is believed to have synced to the chain tip of most work,
-    // we can return a wallet update.
-    fn get_scan_response(&mut self) -> Update {
-        let chain_changeset = core::mem::take(&mut self.chain_changeset);
-        self.chain
-            .apply_changeset(&local_chain::ChangeSet::from(chain_changeset))
-            .expect("chain was initialized with genesis");
         let tx_update = TxUpdate::from(self.graph.graph().clone());
         let graph = core::mem::take(&mut self.graph);
         let last_active_indices = graph.index.last_used_indices();
         self.graph = IndexedTxGraph::new(graph.index);
+
+        // Construct update tip
+        let mut cp = self.cp.clone();
+        for block in blocks.into_iter().map(BlockId::from) {
+            cp = cp.insert(block);
+        }
+        // remember the last tip returned
+        self.cp = cp.clone();
+
         Update {
             tx_update,
             last_active_indices,
-            chain: Some(self.chain.tip()),
+            chain: Some(cp),
         }
     }
 }
