@@ -58,7 +58,7 @@ async fn main() -> anyhow::Result<()> {
     loop {
         select! {
             update = update_subscriber.update() => {
-                wallet.apply_update(update)?;
+                wallet.apply_update(update?)?;
                 tracing::info!("Tx count: {}", wallet.transactions().count());
                 tracing::info!("Balance: {}", wallet.balance().total().to_sat());
                 let last_revealed = wallet.derivation_index(KeychainKind::External);

@@ -93,7 +93,7 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
     // run node
     task::spawn(async move { node.run().await });
     // get update
-    let res = update_subscriber.update().await;
+    let res = update_subscriber.update().await?;
     let Update {
         tx_update,
         chain,
@@ -156,7 +156,7 @@ async fn update_handles_reorg() -> anyhow::Result<()> {
     task::spawn(async move { node.run().await });
 
     // get update
-    let res = update_subscriber.update().await;
+    let res = update_subscriber.update().await?;
     let (anchor, anchor_txid) = *res.tx_update.anchors.iter().next().unwrap();
     assert_eq!(anchor.block_id.hash, blockhash);
     assert_eq!(anchor_txid, txid);
@@ -169,7 +169,7 @@ async fn update_handles_reorg() -> anyhow::Result<()> {
     wait_for_height(&env, 103).await?;
 
     // expect tx to confirm at same height but different blockhash
-    let res = update_subscriber.update().await;
+    let res = update_subscriber.update().await?;
     let (anchor, anchor_txid) = *res.tx_update.anchors.iter().next().unwrap();
     assert_eq!(anchor_txid, txid);
     assert_eq!(anchor.block_id.height, 102);
@@ -217,7 +217,7 @@ async fn update_handles_dormant_wallet() -> anyhow::Result<()> {
     task::spawn(async move { node.run().await });
 
     // get update
-    let res = update_subscriber.update().await;
+    let res = update_subscriber.update().await?;
     let (anchor, anchor_txid) = *res.tx_update.anchors.iter().next().unwrap();
     assert_eq!(anchor.block_id.hash, blockhash);
     assert_eq!(anchor_txid, txid);
@@ -241,7 +241,7 @@ async fn update_handles_dormant_wallet() -> anyhow::Result<()> {
     task::spawn(async move { node.run().await });
 
     // expect tx to confirm at same height but different blockhash
-    let res = update_subscriber.update().await;
+    let res = update_subscriber.update().await?;
     let (anchor, anchor_txid) = *res.tx_update.anchors.iter().next().unwrap();
     assert_eq!(anchor_txid, txid);
     assert_eq!(anchor.block_id.height, 102);
