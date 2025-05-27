@@ -51,7 +51,7 @@
 //! }
 //! ```
 
-use std::{collections::BTreeMap, fmt::Display};
+use std::fmt::Display;
 
 use bdk_wallet::{chain::IndexedTxGraph, Wallet};
 use kyoto::HeaderCheckpoint;
@@ -86,7 +86,7 @@ impl NodeBuilderExt for NodeBuilder {
             // provided
             ScanType::New => (),
             ScanType::Sync => {
-                let block_id = wallet.local_chain().tip();
+                let block_id = wallet.latest_checkpoint();
                 let header_cp = HeaderCheckpoint::new(block_id.height(), block_id.hash());
                 self = self.after_checkpoint(header_cp);
             }
@@ -110,9 +110,8 @@ impl NodeBuilderExt for NodeBuilder {
         let indexed_graph = IndexedTxGraph::new(wallet.spk_index().clone());
         let update_subscriber = UpdateSubscriber {
             receiver: event_rx,
-            chain: wallet.local_chain().clone(),
+            cp: wallet.latest_checkpoint(),
             graph: indexed_graph,
-            chain_changeset: BTreeMap::new(),
         };
         Ok(LightClient {
             requester,
