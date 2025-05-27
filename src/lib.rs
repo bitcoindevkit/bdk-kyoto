@@ -111,8 +111,11 @@ impl UpdateSubscriber {
                     self.chain_changeset.insert(height, Some(hash));
                     let _ = self.graph.apply_block_relevant(&block, height);
                 }
-                Event::BlocksDisconnected(headers) => {
-                    for header in headers {
+                Event::BlocksDisconnected {
+                    accepted: _,
+                    disconnected,
+                } => {
+                    for header in disconnected {
                         let height = header.height;
                         self.chain_changeset.insert(height, None);
                     }
