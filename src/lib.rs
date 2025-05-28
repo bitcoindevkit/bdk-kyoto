@@ -118,7 +118,7 @@ impl UpdateSubscriber {
                     for header in accepted {
                         cp = cp.insert(BlockId {
                             height: header.height,
-                            hash: header.header.block_hash(),
+                            hash: header.block_hash(),
                         });
                     }
                 }
