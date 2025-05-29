@@ -1,6 +1,6 @@
 [package]
 name = "bdk_kyoto"
-version = "0.10.0"
+version = "0.11.0"
 authors = ["Rob <rustaceanrob@protonmail.com>", "Bitcoin Dev Kit Developers"]
 description = "BDK blockchain integration using P2P light client Kyoto"
 license = "MIT OR Apache-2.0"
@@ -12,7 +12,7 @@ edition = "2021"
 rust-version = "1.63.0"
 
 [dependencies]
-bdk_wallet = { version = "1" }
+bdk_wallet = { version = "2.0.0-beta.0" }
 kyoto-cbf = { version = "0.12.1", default-features = false, features = ["rusqlite"] }
 
 [dev-dependencies]
