@@ -8,14 +8,13 @@ use tokio::select;
 
 /// Peer address whitelist
 const PEERS: &[IpAddr] = &[IpAddr::V4(Ipv4Addr::new(23, 137, 57, 100))];
+const RECV: &str = "wpkh([9122d9e0/84'/1'/0']tpubDCYVtmaSaDzTxcgvoP5AHZNbZKZzrvoNH9KARep88vESc6MxRqAp4LmePc2eeGX6XUxBcdhAmkthWTDqygPz2wLAyHWisD299Lkdrj5egY6/0/*)";
+const CHANGE: &str = "wpkh([9122d9e0/84'/1'/0']tpubDCYVtmaSaDzTxcgvoP5AHZNbZKZzrvoNH9KARep88vESc6MxRqAp4LmePc2eeGX6XUxBcdhAmkthWTDqygPz2wLAyHWisD299Lkdrj5egY6/1/*)";
 
 /* Sync a bdk wallet */
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let desc = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/0/*)";
-    let change_desc = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/1/*)";
-
     let subscriber = tracing_subscriber::FmtSubscriber::new();
     tracing::subscriber::set_global_default(subscriber)?;
 
@@ -28,7 +27,7 @@ async fn main() -> anyhow::Result<()> {
         })
         .collect();
 
-    let mut wallet = Wallet::create(desc, change_desc)
+    let mut wallet = Wallet::create(RECV, CHANGE)
         .network(Network::Signet)
         .lookahead(30)
         .create_wallet_no_persist()?;
