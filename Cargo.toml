@@ -18,7 +18,7 @@ kyoto-cbf = { version = "0.12.1", default-features = false, features = ["rusqlit
 [dev-dependencies]
 tokio = { version = "1", features = ["full"], default-features = false }
 anyhow = "1.0"
-bdk_testenv = { version = "0.12.0", default-features = true }
+bdk_testenv = { version = "0.13.0", default-features = true }
 tempfile = "3.12.0"
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3" }
