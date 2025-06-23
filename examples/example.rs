@@ -1,13 +1,10 @@
-use std::net::{IpAddr, Ipv4Addr};
-
 use bdk_kyoto::builder::{NodeBuilder, NodeBuilderExt};
-use bdk_kyoto::{LightClient, RequesterExt, ScanType, TrustedPeer};
-use bdk_wallet::bitcoin::{p2p::ServiceFlags, Network};
+use bdk_kyoto::{LightClient, RequesterExt, ScanType};
+use bdk_wallet::bitcoin::Network;
 use bdk_wallet::{KeychainKind, Wallet};
 use tokio::select;
 
 /// Peer address whitelist
-const PEERS: &[IpAddr] = &[IpAddr::V4(Ipv4Addr::new(23, 137, 57, 100))];
 const RECV: &str = "wpkh([9122d9e0/84'/1'/0']tpubDCYVtmaSaDzTxcgvoP5AHZNbZKZzrvoNH9KARep88vESc6MxRqAp4LmePc2eeGX6XUxBcdhAmkthWTDqygPz2wLAyHWisD299Lkdrj5egY6/0/*)";
 const CHANGE: &str = "wpkh([9122d9e0/84'/1'/0']tpubDCYVtmaSaDzTxcgvoP5AHZNbZKZzrvoNH9KARep88vESc6MxRqAp4LmePc2eeGX6XUxBcdhAmkthWTDqygPz2wLAyHWisD299Lkdrj5egY6/1/*)";
 
@@ -17,15 +14,6 @@ const CHANGE: &str = "wpkh([9122d9e0/84'/1'/0']tpubDCYVtmaSaDzTxcgvoP5AHZNbZKZzr
 async fn main() -> anyhow::Result<()> {
     let subscriber = tracing_subscriber::FmtSubscriber::new();
     tracing::subscriber::set_global_default(subscriber)?;
-
-    let peers: Vec<TrustedPeer> = PEERS
-        .iter()
-        .map(|ip| {
-            let mut peer = TrustedPeer::from_ip(*ip);
-            peer.set_services(ServiceFlags::P2P_V2);
-            peer
-        })
-        .collect();
 
     let mut wallet = Wallet::create(RECV, CHANGE)
         .network(Network::Signet)
@@ -46,7 +34,6 @@ async fn main() -> anyhow::Result<()> {
         mut update_subscriber,
         node,
     } = NodeBuilder::new(Network::Signet)
-        .add_peers(peers)
         .build_with_wallet(&wallet, scan_type)
         .unwrap();
 
