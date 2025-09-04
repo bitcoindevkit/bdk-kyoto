@@ -21,7 +21,6 @@
 //!
 //!     let LightClient {
 //!         requester,
-//!         log_subscriber: _,
 //!         info_subscriber: _,
 //!         warning_subscriber: _,
 //!         mut update_subscriber,
@@ -74,8 +73,6 @@ pub mod builder;
 pub struct LightClient {
     /// Send events to a running node (i.e. broadcast a transaction).
     pub requester: Requester,
-    /// Receive logs from the node as it runs.
-    pub log_subscriber: Receiver<String>,
     /// Receive informational messages as the node runs.
     pub info_subscriber: Receiver<Info>,
     /// Receive warnings from the node as it runs.

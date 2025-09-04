@@ -32,7 +32,6 @@
 //!
 //!     let LightClient {
 //!         requester,
-//!         log_subscriber,
 //!         info_subscriber,
 //!         warning_subscriber,
 //!         update_subscriber,
@@ -102,7 +101,6 @@ impl NodeBuilderExt for NodeBuilder {
         let (node, client) = self.build()?;
         let kyoto::Client {
             requester,
-            log_rx,
             info_rx,
             warn_rx,
             event_rx,
@@ -115,7 +113,6 @@ impl NodeBuilderExt for NodeBuilder {
         };
         Ok(LightClient {
             requester,
-            log_subscriber: log_rx,
             info_subscriber: info_rx,
             warning_subscriber: warn_rx,
             update_subscriber,
