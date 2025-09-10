@@ -1,5 +1,5 @@
-use bdk_kyoto::builder::{NodeBuilder, NodeBuilderExt};
-use bdk_kyoto::{LightClient, RequesterExt, ScanType};
+use bdk_kyoto::builder::{Builder, BuilderExt};
+use bdk_kyoto::{Info, LightClient, Receiver, ScanType, UnboundedReceiver, Warning};
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::{KeychainKind, Wallet};
 use tokio::select;
@@ -10,58 +10,12 @@ const CHANGE: &str = "wpkh([9122d9e0/84'/1'/0']tpubDCYVtmaSaDzTxcgvoP5AHZNbZKZzr
 
 /* Sync a bdk wallet */
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let subscriber = tracing_subscriber::FmtSubscriber::new();
-    tracing::subscriber::set_global_default(subscriber)?;
-
-    let mut wallet = Wallet::create(RECV, CHANGE)
-        .network(Network::Signet)
-        .lookahead(30)
-        .create_wallet_no_persist()?;
-
-    // With no persistence, each scan type is a recovery.
-    let scan_type = ScanType::Recovery {
-        from_height: 170_000,
-    };
-
-    // The light client builder handles the logic of inserting the SPKs
-    let LightClient {
-        requester,
-        mut info_subscriber,
-        mut warning_subscriber,
-        mut update_subscriber,
-        node,
-    } = NodeBuilder::new(Network::Signet)
-        .build_with_wallet(&wallet, scan_type)
-        .unwrap();
-
-    tokio::task::spawn(async move { node.run().await });
-
-    // Sync and apply updates. We can do this in a continual loop while the "application" is running.
-    // Often this would occur on a separate thread than the underlying application user interface.
+async fn traces(
+    mut info_subscriber: Receiver<Info>,
+    mut warning_subscriber: UnboundedReceiver<Warning>,
+) {
     loop {
         select! {
-            update = update_subscriber.update() => {
-                wallet.apply_update(update?)?;
-                tracing::info!("Tx count: {}", wallet.transactions().count());
-                tracing::info!("Balance: {}", wallet.balance().total().to_sat());
-                let last_revealed = wallet.derivation_index(KeychainKind::External);
-                tracing::info!("Last revealed External: {:?}", last_revealed);
-                tracing::info!(
-                    "Last revealed Internal: {:?}",
-                    wallet.derivation_index(KeychainKind::Internal)
-                );
-                tracing::info!("Local chain tip: {}", wallet.local_chain().tip().height());
-                let next = wallet.reveal_next_address(KeychainKind::External).address;
-                tracing::info!("Next receiving address: {next}");
-                let fee_filter = requester.broadcast_min_feerate().await.unwrap();
-                tracing::info!(
-                    "Broadcast minimum fee rate: {:#}",
-                    fee_filter
-                );
-                requester.add_revealed_scripts(&wallet)?;
-            },
             info = info_subscriber.recv() => {
                 if let Some(info) = info {
                     tracing::info!("{info}")
@@ -74,4 +28,49 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     }
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let subscriber = tracing_subscriber::FmtSubscriber::new();
+    tracing::subscriber::set_global_default(subscriber)?;
+
+    let mut wallet = Wallet::create(RECV, CHANGE)
+        .network(Network::Signet)
+        .create_wallet_no_persist()?;
+
+    let scan_type = ScanType::Sync;
+
+    // The light client builder handles the logic of inserting the SPKs
+    let LightClient {
+        requester,
+        info_subscriber,
+        warning_subscriber,
+        mut update_subscriber,
+        node,
+    } = Builder::new(Network::Signet)
+        .build_with_wallet(&wallet, scan_type)
+        .unwrap();
+
+    tokio::task::spawn(async move { node.run().await });
+    tokio::task::spawn(async move { traces(info_subscriber, warning_subscriber).await });
+
+    // Sync and apply updates. We can do this in a continual loop while the "application" is running.
+    // Often this would occur on a separate thread than the underlying application user interface.
+    let update = update_subscriber.update().await?;
+    wallet.apply_update(update)?;
+    tracing::info!("Tx count: {}", wallet.transactions().count());
+    tracing::info!("Balance: {:#}", wallet.balance().total());
+    let last_revealed = wallet.derivation_index(KeychainKind::External);
+    tracing::info!("Last revealed External: {:?}", last_revealed);
+    tracing::info!(
+        "Last revealed Internal: {:?}",
+        wallet.derivation_index(KeychainKind::Internal)
+    );
+    tracing::info!("Local chain tip: {}", wallet.local_chain().tip().height());
+    let next = wallet.reveal_next_address(KeychainKind::External).address;
+    tracing::info!("Next receiving address: {next}");
+    let fee_filter = requester.broadcast_min_feerate().await.unwrap();
+    tracing::info!("Broadcast minimum fee rate: {:#}", fee_filter);
+    return Ok(());
 }
