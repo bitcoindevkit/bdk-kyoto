@@ -3,14 +3,14 @@
 //!
 //! If you have an existing project that leverages `bdk_wallet`, building the compact block filter
 //! _node_ and _client_ is simple. You may construct and configure a node to integrate with your
-//! wallet by using the [`BuilderExt`](crate::builder) and [`NodeBuilder`](crate::builder).
+//! wallet by using the [`BuilderExt`](crate::builder) and [`Builder`](crate::builder).
 //!
 //! ```no_run
 //! # const RECEIVE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/0/*)";
 //! # const CHANGE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/1/*)";
 //! use bdk_wallet::Wallet;
 //! use bdk_wallet::bitcoin::Network;
-//! use bdk_kyoto::builder::{NodeBuilder, NodeBuilderExt};
+//! use bdk_kyoto::builder::{Builder, BuilderExt};
 //! use bdk_kyoto::{LightClient, ScanType};
 //!
 //! #[tokio::main]
@@ -25,7 +25,7 @@
 //!         warning_subscriber: _,
 //!         mut update_subscriber,
 //!         node
-//!     } = NodeBuilder::new(Network::Signet).build_with_wallet(&wallet, ScanType::New)?;
+//!     } = Builder::new(Network::Signet).build_with_wallet(&wallet, ScanType::Sync)?;
 //!
 //!     tokio::task::spawn(async move { node.run().await });
 //!
@@ -48,24 +48,24 @@ use bdk_wallet::chain::{keychain_txout::KeychainTxOutIndex, IndexedTxGraph};
 use bdk_wallet::chain::{ConfirmationBlockTime, TxUpdate};
 use bdk_wallet::KeychainKind;
 
-pub extern crate kyoto;
+pub extern crate bip157;
 
-pub use kyoto::builder::NodeDefault;
+pub use bip157::builder::NodeDefault;
+use bip157::ScriptBuf;
 #[doc(inline)]
-pub use kyoto::{
-    ClientError, FeeRate, Info, NodeState, RejectPayload, RejectReason, Requester, ScriptBuf,
-    SyncUpdate, TrustedPeer, TxBroadcast, TxBroadcastPolicy, Txid, Warning,
+pub use bip157::{
+    BlockHash, ClientError, FeeRate, HeaderCheckpoint, Info, RejectPayload, RejectReason,
+    Requester, TrustedPeer, TxBroadcast, TxBroadcastPolicy, Txid, Warning,
 };
+use bip157::{Event, SyncUpdate};
 
 #[doc(inline)]
-pub use kyoto::Receiver;
+pub use bip157::Receiver;
 #[doc(inline)]
-pub use kyoto::UnboundedReceiver;
-use kyoto::{Event, IndexedBlock};
+pub use bip157::UnboundedReceiver;
 
 #[doc(inline)]
-pub use builder::NodeBuilderExt;
-
+pub use builder::BuilderExt;
 pub mod builder;
 
 #[derive(Debug)]
@@ -87,26 +87,60 @@ pub struct LightClient {
 /// updates to an underlying wallet.
 #[derive(Debug)]
 pub struct UpdateSubscriber {
+    // request information from the client
+    requester: Requester,
     // channel receiver
     receiver: UnboundedReceiver<Event>,
     // changes to local chain
     cp: CheckPoint,
     // receive graph
     graph: IndexedTxGraph<ConfirmationBlockTime, KeychainTxOutIndex<KeychainKind>>,
+    // blocks we will need to get
+    queued_blocks: Vec<BlockHash>,
+    // queued scripts to check filters
+    spk_cache: HashSet<ScriptBuf>,
 }
 
 impl UpdateSubscriber {
+    fn new(
+        requester: Requester,
+        scan_type: ScanType,
+        receiver: UnboundedReceiver<Event>,
+        cp: CheckPoint,
+        graph: IndexedTxGraph<ConfirmationBlockTime, KeychainTxOutIndex<KeychainKind>>,
+    ) -> Self {
+        let spk_cache = match scan_type {
+            ScanType::Sync => Self::peek_scripts(&graph.index, graph.index.lookahead()),
+            ScanType::Recovery {
+                used_script_index,
+                checkpoint: _,
+            } => Self::peek_scripts(&graph.index, used_script_index),
+        };
+        Self {
+            requester,
+            receiver,
+            cp,
+            graph,
+            queued_blocks: Vec::new(),
+            spk_cache,
+        }
+    }
     /// Return the most recent update from the node once it has synced to the network's tip.
     /// This may take a significant portion of time during wallet recoveries or dormant wallets.
     /// Note that you may call this method in a loop as long as the node is running.
+    ///
+    /// **Warning**
+    ///
+    /// This method is _not_ cancel safe. You cannot use it within a `tokio::select` arm.
     pub async fn update(&mut self) -> Result<Update, UpdateError> {
         let mut cp = self.cp.clone();
         while let Some(message) = self.receiver.recv().await {
             match message {
-                Event::Block(IndexedBlock { height, block }) => {
-                    let hash = block.header.block_hash();
-                    cp = cp.insert(BlockId { height, hash });
-                    let _ = self.graph.apply_block_relevant(&block, height);
+                Event::IndexedFilter(filter) => {
+                    let block_hash = filter.block_hash();
+                    if filter.contains_any(self.spk_cache.iter()) {
+                        self.queued_blocks.push(block_hash);
+                    }
                 }
                 Event::BlocksDisconnected {
                     accepted,
@@ -119,10 +153,22 @@ impl UpdateSubscriber {
                         });
                     }
                 }
-                Event::Synced(SyncUpdate {
+                Event::FiltersSynced(SyncUpdate {
                     tip: _,
                     recent_history,
                 }) => {
+                    for hash in core::mem::take(&mut self.queued_blocks) {
+                        let block = self
+                            .requester
+                            .get_block(hash)
+                            .await
+                            .map_err(|_| UpdateError::NodeStopped)?;
+                        let height = block.height;
+                        let block = block.block;
+                        let hash = block.header.block_hash();
+                        cp = cp.insert(BlockId { height, hash });
+                        let _ = self.graph.apply_block_relevant(&block, height);
+                    }
                     for (height, header) in recent_history {
                         cp = cp.insert(BlockId {
                             height,
@@ -132,6 +178,7 @@ impl UpdateSubscriber {
                     self.cp = cp;
                     return Ok(self.get_scan_response());
                 }
+                _ => (),
             }
         }
         Err(UpdateError::NodeStopped)
@@ -149,6 +196,36 @@ impl UpdateSubscriber {
             last_active_indices,
             chain: Some(self.cp.clone()),
         }
+    }
+
+    fn peek_scripts(
+        keychain: &KeychainTxOutIndex<KeychainKind>,
+        to_index: u32,
+    ) -> HashSet<ScriptBuf> {
+        let mut spk_cache = HashSet::new();
+        // We pre-compute an SPK cache so as to not call `unbounded_spk_iter` for each filter
+        let last_revealed = keychain.last_revealed_indices();
+        let ext_index = last_revealed
+            .get(&KeychainKind::External)
+            .copied()
+            .unwrap_or(0);
+        let unbounded_ext_spk_iter = keychain
+            .unbounded_spk_iter(KeychainKind::External)
+            .expect("wallet must have external keychain");
+        let bound = (ext_index + to_index) as usize;
+        let bounded_ext_iter = unbounded_ext_spk_iter.take(bound).map(|(_, script)| script);
+        spk_cache.extend(bounded_ext_iter);
+        let int_index = last_revealed
+            .get(&KeychainKind::Internal)
+            .copied()
+            .unwrap_or(0);
+        let unbounded_int_spk_iter = keychain.unbounded_spk_iter(KeychainKind::Internal);
+        if let Some(int_spk_iter) = unbounded_int_spk_iter {
+            let bound = (int_index + to_index) as usize;
+            let bounded_int_iter = int_spk_iter.take(bound).map(|(_, script)| script);
+            spk_cache.extend(bounded_int_iter);
+        }
+        spk_cache
     }
 }
 
@@ -172,60 +249,14 @@ impl std::error::Error for UpdateError {}
 /// How to scan compact block filters on start up.
 #[derive(Debug, Clone, Copy, Default)]
 pub enum ScanType {
-    /// Start a wallet sync that is known to have no transactions.
-    New,
     /// Sync the wallet from the last known wallet checkpoint to the rest of the network.
     #[default]
     Sync,
     /// Recover an old wallet by scanning after the specified height.
     Recovery {
+        /// The amount of scripts used by the wallet that is being recovered.
+        used_script_index: u32,
         /// The height in the block chain to begin searching for transactions.
-        from_height: u32,
+        checkpoint: HeaderCheckpoint,
     },
-}
-
-/// Extend the functionality of [`Wallet`](bdk_wallet) for interoperablility
-/// with the light client.
-pub trait WalletExt {
-    /// Collect relevant scripts for addition to the node. Peeks scripts
-    /// `lookahead` + `last_revealed_index` for each keychain.
-    fn peek_revealed_plus_lookahead(&self) -> Box<dyn Iterator<Item = ScriptBuf>>;
-}
-
-impl WalletExt for bdk_wallet::Wallet {
-    fn peek_revealed_plus_lookahead(&self) -> Box<dyn Iterator<Item = ScriptBuf>> {
-        let mut spks: HashSet<ScriptBuf> = HashSet::new();
-        for keychain in [KeychainKind::External, KeychainKind::Internal] {
-            let last_revealed = self.spk_index().last_revealed_index(keychain).unwrap_or(0);
-            let lookahead_index = last_revealed + self.spk_index().lookahead();
-            for index in 0..=lookahead_index {
-                spks.insert(self.peek_address(keychain, index).script_pubkey());
-            }
-        }
-        Box::new(spks.into_iter())
-    }
-}
-
-/// Extend the [`Requester`] functionality to work conveniently with a [`Wallet`](bdk_wallet).
-pub trait RequesterExt {
-    /// Add all revealed scripts to the node to monitor.
-    fn add_revealed_scripts<'a>(
-        &'a self,
-        wallet: &'a bdk_wallet::Wallet,
-    ) -> Result<(), ClientError>;
-}
-
-impl RequesterExt for Requester {
-    fn add_revealed_scripts<'a>(
-        &'a self,
-        wallet: &'a bdk_wallet::Wallet,
-    ) -> Result<(), ClientError> {
-        for keychain in [KeychainKind::External, KeychainKind::Internal] {
-            let scripts = wallet.spk_index().revealed_keychain_spks(keychain);
-            for (_, script) in scripts {
-                self.add_script(script)?;
-            }
-        }
-        Ok(())
-    }
 }

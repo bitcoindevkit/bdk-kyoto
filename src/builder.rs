@@ -12,8 +12,8 @@
 //! use std::path::PathBuf;
 //! use std::time::Duration;
 //! use bdk_wallet::Wallet;
-//! use bdk_kyoto::kyoto::{Network, TrustedPeer};
-//! use bdk_kyoto::builder::{NodeBuilder, NodeBuilderExt};
+//! use bdk_kyoto::bip157::{Network, TrustedPeer};
+//! use bdk_kyoto::builder::{Builder, BuilderExt};
 //! use bdk_kyoto::{LightClient, ScanType};
 //!
 //! #[tokio::main]
@@ -28,7 +28,7 @@
 //!         .network(Network::Signet)
 //!         .create_wallet_no_persist()?;
 //!
-//!     let scan_type = ScanType::Recovery { from_height: 200_000 };
+//!     let scan_type = ScanType::Sync;
 //!
 //!     let LightClient {
 //!         requester,
@@ -36,7 +36,7 @@
 //!         warning_subscriber,
 //!         update_subscriber,
 //!         node
-//!     } = NodeBuilder::new(Network::Signet)
+//!     } = Builder::new(Network::Signet)
 //!         // A node may handle multiple connections
 //!         .required_peers(2)
 //!         // Choose where to store node data
@@ -53,13 +53,13 @@
 use std::fmt::Display;
 
 use bdk_wallet::{chain::IndexedTxGraph, Wallet};
-use kyoto::HeaderCheckpoint;
-pub use kyoto::{db::error::SqlInitializationError, NodeBuilder};
+use bip157::HeaderCheckpoint;
+pub use bip157::{db::error::SqlInitializationError, Builder};
 
-use crate::{LightClient, ScanType, UpdateSubscriber, WalletExt};
+use crate::{LightClient, ScanType, UpdateSubscriber};
 
 /// Build a compact block filter client and node for a specified wallet
-pub trait NodeBuilderExt {
+pub trait BuilderExt {
     /// Attempt to build the node with scripts from a [`Wallet`] and following a [`ScanType`].
     fn build_with_wallet(
         self,
@@ -68,7 +68,7 @@ pub trait NodeBuilderExt {
     ) -> Result<LightClient, BuilderError>;
 }
 
-impl NodeBuilderExt for NodeBuilder {
+impl BuilderExt for Builder {
     fn build_with_wallet(
         mut self,
         wallet: &Wallet,
@@ -78,39 +78,32 @@ impl NodeBuilderExt for NodeBuilder {
         if self.network().ne(&network) {
             return Err(BuilderError::NetworkMismatch);
         }
-        let scripts = wallet.peek_revealed_plus_lookahead();
-        self = self.add_scripts(scripts);
         match scan_type {
-            // This is a no-op because kyoto will start from the latest checkpoint if none is
-            // provided
-            ScanType::New => (),
             ScanType::Sync => {
-                let block_id = wallet.latest_checkpoint();
-                let header_cp = HeaderCheckpoint::new(block_id.height(), block_id.hash());
-                self = self.after_checkpoint(header_cp);
+                let current_cp = wallet.latest_checkpoint();
+                let checkpoint = HeaderCheckpoint::new(current_cp.height(), current_cp.hash());
+                self = self.after_checkpoint(checkpoint)
             }
-            ScanType::Recovery { from_height } => {
-                // Make sure we don't miss the first transaction of the wallet.
-                // The anchor checkpoint is non-inclusive.
-                let birthday = from_height.saturating_sub(1);
-                let header_cp =
-                    HeaderCheckpoint::closest_checkpoint_below_height(birthday, network);
-                self = self.after_checkpoint(header_cp);
-            }
-        };
+            ScanType::Recovery {
+                used_script_index: _,
+                checkpoint,
+            } => self = self.after_checkpoint(checkpoint),
+        }
         let (node, client) = self.build()?;
-        let kyoto::Client {
+        let bip157::Client {
             requester,
             info_rx,
             warn_rx,
             event_rx,
         } = client;
         let indexed_graph = IndexedTxGraph::new(wallet.spk_index().clone());
-        let update_subscriber = UpdateSubscriber {
-            receiver: event_rx,
-            cp: wallet.latest_checkpoint(),
-            graph: indexed_graph,
-        };
+        let update_subscriber = UpdateSubscriber::new(
+            requester.clone(),
+            scan_type,
+            event_rx,
+            wallet.latest_checkpoint(),
+            indexed_graph,
+        );
         Ok(LightClient {
             requester,
             info_subscriber: info_rx,
@@ -125,7 +118,7 @@ impl NodeBuilderExt for NodeBuilder {
 #[derive(Debug)]
 pub enum BuilderError {
     /// The database failed to open.
-    IO(SqlInitializationError),
+    Io(SqlInitializationError),
     /// The wallet network and node network do not match.
     NetworkMismatch,
 }
@@ -133,7 +126,7 @@ pub enum BuilderError {
 impl Display for BuilderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            BuilderError::IO(e) => write!(f, "failed to initialize the db: {e}"),
+            BuilderError::Io(e) => write!(f, "failed to initialize the db: {e}"),
             BuilderError::NetworkMismatch => {
                 write!(f, "wallet network and node network do not match")
             }
@@ -145,6 +138,6 @@ impl std::error::Error for BuilderError {}
 
 impl From<SqlInitializationError> for BuilderError {
     fn from(value: SqlInitializationError) -> Self {
-        BuilderError::IO(value)
+        BuilderError::Io(value)
     }
 }
