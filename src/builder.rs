@@ -53,10 +53,13 @@
 use std::fmt::Display;
 
 use bdk_wallet::{chain::IndexedTxGraph, Wallet};
-use bip157::HeaderCheckpoint;
+use bip157::{chain::ChainState, HeaderCheckpoint};
 pub use bip157::{db::error::SqlInitializationError, Builder};
 
 use crate::{LightClient, ScanType, UpdateSubscriber};
+
+//
+const WALK_BACK: u8 = 7;
 
 /// Build a compact block filter client and node for a specified wallet
 pub trait BuilderExt {
@@ -78,21 +81,25 @@ impl BuilderExt for Builder {
         if self.network().ne(&network) {
             return Err(BuilderError::NetworkMismatch);
         }
-        let mut recovery = false;
         match scan_type {
             ScanType::Sync => {
+                let mut walk_back = 0;
                 let block_id = wallet.latest_checkpoint();
-                let header_cp = HeaderCheckpoint::new(block_id.height(), block_id.hash());
-                self = self.after_checkpoint(header_cp);
+                let mut start_point = HeaderCheckpoint::new(block_id.height(), block_id.hash());
+                while let Some(next) = block_id.prev() {
+                    start_point = HeaderCheckpoint::new(next.height(), next.hash());
+                    if walk_back.eq(&WALK_BACK) {
+                        break;
+                    }
+                    walk_back += 1;
+                }
+                self = self.chain_state(ChainState::Checkpoint(start_point));
             }
             ScanType::Recovery { checkpoint } => {
-                recovery = true;
-                if wallet.latest_checkpoint().height() < checkpoint.height {
-                    self = self.after_checkpoint(checkpoint);
-                }
+                self = self.chain_state(ChainState::Checkpoint(checkpoint));
             }
         };
-        let (node, client) = self.build()?;
+        let (node, client) = self.build();
         let bip157::Client {
             requester,
             info_rx,
@@ -101,7 +108,6 @@ impl BuilderExt for Builder {
         } = client;
         let indexed_graph = IndexedTxGraph::new(wallet.spk_index().clone());
         let update_subscriber = UpdateSubscriber::new(
-            recovery,
             requester.clone(),
             event_rx,
             wallet.latest_checkpoint(),

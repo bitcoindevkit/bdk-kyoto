@@ -13,7 +13,7 @@ rust-version = "1.74.0"
 
 [dependencies]
 bdk_wallet = { version = "2" }
-bip157 = { version = "0.1.0", default-features = false, features = ["rusqlite"] }
+bip157 = { git = "https://github.com/2140-dev/kyoto", rev = "75e06d8868179a14be0b6afb84c30cc374d00385" }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"], default-features = false }

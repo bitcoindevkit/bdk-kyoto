@@ -50,7 +50,8 @@ use bdk_wallet::KeychainKind;
 
 pub extern crate bip157;
 
-pub use bip157::builder::NodeDefault;
+use bip157::chain::BlockHeaderChanges;
+use bip157::Node;
 #[doc(inline)]
 pub use bip157::{
     BlockHash, ClientError, FeeRate, HeaderCheckpoint, Info, RejectPayload, RejectReason,
@@ -83,7 +84,7 @@ pub struct LightClient {
     /// Receive wallet updates from a node.
     pub update_subscriber: UpdateSubscriber,
     /// The underlying node that must be run to fetch blocks from peers.
-    pub node: NodeDefault,
+    pub node: Node,
 }
 
 /// Interpret events from a node that is running to apply
@@ -106,7 +107,6 @@ pub struct UpdateSubscriber {
 
 impl UpdateSubscriber {
     fn new(
-        recovery: bool,
         requester: Requester,
         receiver: UnboundedReceiver<Event>,
         cp: CheckPoint,
@@ -120,7 +120,7 @@ impl UpdateSubscriber {
             block_queue: Vec::new(),
             spk_cache: HashSet::new(),
         };
-        subscriber.populate_spk_cache(recovery);
+        subscriber.populate_spk_cache();
         subscriber
     }
     /// Return the most recent update from the node once it has synced to the network's tip.
@@ -165,20 +165,16 @@ impl UpdateSubscriber {
                         self.block_queue.push(block_hash);
                     }
                 }
-                Event::BlocksDisconnected {
-                    accepted,
-                    disconnected: _,
-                } => {
-                    for header in accepted {
-                        cp = cp.insert(BlockId {
-                            height: header.height,
-                            hash: header.block_hash(),
-                        });
-                    }
+                Event::ChainUpdate(BlockHeaderChanges::Connected(at)) => {
+                    let block_id = BlockId {
+                        hash: at.block_hash(),
+                        height: at.height,
+                    };
+                    cp = cp.clone().insert(block_id);
                 }
                 Event::FiltersSynced(SyncUpdate {
                     tip: _,
-                    recent_history,
+                    recent_history: _,
                 }) => {
                     for hash in core::mem::take(&mut self.block_queue) {
                         let block = self
@@ -188,15 +184,7 @@ impl UpdateSubscriber {
                             .map_err(|_| UpdateError::NodeStopped)?;
                         let height = block.height;
                         let block = block.block;
-                        let hash = block.header.block_hash();
-                        cp = cp.insert(BlockId { height, hash });
                         let _ = self.graph.apply_block_relevant(&block, height);
-                    }
-                    for (height, header) in recent_history {
-                        cp = cp.insert(BlockId {
-                            height,
-                            hash: header.block_hash(),
-                        });
                     }
                     self.cp = cp;
                     return Ok(self.get_scan_response());
@@ -221,12 +209,7 @@ impl UpdateSubscriber {
         }
     }
 
-    fn populate_spk_cache(&mut self, recovery: bool) {
-        let delta = if recovery {
-            RECOVERY_SCRIPT_PEEK
-        } else {
-            self.graph.index.lookahead()
-        };
+    fn populate_spk_cache(&mut self) {
         let last_revealed = self.graph.index.last_revealed_indices();
         let ext_index = last_revealed
             .get(&KeychainKind::External)
@@ -237,7 +220,7 @@ impl UpdateSubscriber {
             .index
             .unbounded_spk_iter(KeychainKind::External)
             .expect("wallet must have external keychain");
-        let bound = (ext_index + delta) as usize;
+        let bound = (ext_index + RECOVERY_SCRIPT_PEEK) as usize;
         let bounded_ext_iter = unbounded_ext_spk_iter.take(bound).map(|(_, script)| script);
         self.spk_cache.extend(bounded_ext_iter);
         let int_index = last_revealed
@@ -246,7 +229,7 @@ impl UpdateSubscriber {
             .unwrap_or(0);
         let unbounded_int_spk_iter = self.graph.index.unbounded_spk_iter(KeychainKind::Internal);
         if let Some(int_spk_iter) = unbounded_int_spk_iter {
-            let bound = (int_index + delta) as usize;
+            let bound = (int_index + RECOVERY_SCRIPT_PEEK) as usize;
             let bounded_int_iter = int_spk_iter.take(bound).map(|(_, script)| script);
             self.spk_cache.extend(bounded_int_iter);
         }
