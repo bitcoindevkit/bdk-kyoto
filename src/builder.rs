@@ -52,11 +52,16 @@
 
 use std::fmt::Display;
 
-use bdk_wallet::{chain::IndexedTxGraph, Wallet};
-use bip157::HeaderCheckpoint;
-pub use bip157::{db::error::SqlInitializationError, Builder};
+use bdk_wallet::{
+    chain::{CheckPoint, IndexedTxGraph},
+    Wallet,
+};
+pub use bip157::Builder;
+use bip157::{chain::ChainState, HeaderCheckpoint};
 
 use crate::{LightClient, ScanType, UpdateSubscriber};
+
+const IMPOSSIBLE_REORG_DEPTH: usize = 7;
 
 /// Build a compact block filter client and node for a specified wallet
 pub trait BuilderExt {
@@ -81,15 +86,15 @@ impl BuilderExt for Builder {
         match scan_type {
             ScanType::Sync => {
                 let current_cp = wallet.latest_checkpoint();
-                let checkpoint = HeaderCheckpoint::new(current_cp.height(), current_cp.hash());
-                self = self.after_checkpoint(checkpoint)
+                let sync_start = walk_back_max_reorg(current_cp);
+                self = self.chain_state(ChainState::Checkpoint(sync_start));
             }
             ScanType::Recovery {
                 used_script_index: _,
                 checkpoint,
-            } => self = self.after_checkpoint(checkpoint),
+            } => self = self.chain_state(ChainState::Checkpoint(checkpoint)),
         }
-        let (node, client) = self.build()?;
+        let (node, client) = self.build();
         let bip157::Client {
             requester,
             info_rx,
@@ -114,11 +119,22 @@ impl BuilderExt for Builder {
     }
 }
 
+/// Walk back 7 blocks in case the last sync was an orphan block.
+fn walk_back_max_reorg(checkpoint: CheckPoint) -> HeaderCheckpoint {
+    let mut ret_cp = HeaderCheckpoint::new(checkpoint.height(), checkpoint.hash());
+    let cp_iter = checkpoint.iter();
+    for (index, next) in cp_iter.enumerate() {
+        if index > IMPOSSIBLE_REORG_DEPTH {
+            return ret_cp;
+        }
+        ret_cp = HeaderCheckpoint::new(next.height(), next.hash());
+    }
+    ret_cp
+}
+
 /// Errors the builder may throw.
 #[derive(Debug)]
 pub enum BuilderError {
-    /// The database failed to open.
-    Io(SqlInitializationError),
     /// The wallet network and node network do not match.
     NetworkMismatch,
 }
@@ -126,7 +142,6 @@ pub enum BuilderError {
 impl Display for BuilderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            BuilderError::Io(e) => write!(f, "failed to initialize the db: {e}"),
             BuilderError::NetworkMismatch => {
                 write!(f, "wallet network and node network do not match")
             }
@@ -135,9 +150,3 @@ impl Display for BuilderError {
 }
 
 impl std::error::Error for BuilderError {}
-
-impl From<SqlInitializationError> for BuilderError {
-    fn from(value: SqlInitializationError) -> Self {
-        BuilderError::Io(value)
-    }
-}

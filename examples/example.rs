@@ -1,12 +1,15 @@
 use bdk_kyoto::builder::{Builder, BuilderExt};
-use bdk_kyoto::{Info, LightClient, Receiver, ScanType, UnboundedReceiver, Warning};
+use bdk_kyoto::{
+    HeaderCheckpoint, Info, LightClient, Receiver, ScanType, UnboundedReceiver, Warning,
+};
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::{KeychainKind, Wallet};
 use tokio::select;
 
-/// Peer address whitelist
 const RECV: &str = "wpkh([9122d9e0/84'/1'/0']tpubDCYVtmaSaDzTxcgvoP5AHZNbZKZzrvoNH9KARep88vESc6MxRqAp4LmePc2eeGX6XUxBcdhAmkthWTDqygPz2wLAyHWisD299Lkdrj5egY6/0/*)";
 const CHANGE: &str = "wpkh([9122d9e0/84'/1'/0']tpubDCYVtmaSaDzTxcgvoP5AHZNbZKZzrvoNH9KARep88vESc6MxRqAp4LmePc2eeGX6XUxBcdhAmkthWTDqygPz2wLAyHWisD299Lkdrj5egY6/1/*)";
+const NETWORK: Network = Network::Signet;
+const USER_SCRIPTS_USED: u32 = 1_000;
 
 /* Sync a bdk wallet */
 
@@ -18,7 +21,15 @@ async fn traces(
         select! {
             info = info_subscriber.recv() => {
                 if let Some(info) = info {
-                    tracing::info!("{info}")
+                    match info {
+                        Info::Progress(p) => {
+                            tracing::info!("chain height: {}, filter download progress: {}%", p.chain_height(), p.percentage_complete());
+                        },
+                        Info::BlockReceived(b) => {
+                            tracing::info!("downloaded block: {b}");
+                        },
+                        _ => (),
+                    }
                 }
             }
             warn = warning_subscriber.recv() => {
@@ -36,10 +47,13 @@ async fn main() -> anyhow::Result<()> {
     tracing::subscriber::set_global_default(subscriber)?;
 
     let mut wallet = Wallet::create(RECV, CHANGE)
-        .network(Network::Signet)
+        .network(NETWORK)
         .create_wallet_no_persist()?;
 
-    let scan_type = ScanType::Sync;
+    let scan_type = ScanType::Recovery {
+        used_script_index: USER_SCRIPTS_USED,
+        checkpoint: HeaderCheckpoint::from_genesis(NETWORK),
+    };
 
     // The light client builder handles the logic of inserting the SPKs
     let LightClient {
@@ -48,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
         warning_subscriber,
         mut update_subscriber,
         node,
-    } = Builder::new(Network::Signet)
+    } = Builder::new(NETWORK)
         .build_with_wallet(&wallet, scan_type)
         .unwrap();
 
