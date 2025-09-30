@@ -177,6 +177,7 @@ impl UpdateSubscriber {
                         let _ = self.graph.apply_block_relevant(&block, height);
                     }
                     self.cp = cp;
+                    Self::peek_scripts(&self.graph.index, self.graph.index.lookahead());
                     return Ok(self.get_scan_response());
                 }
                 _ => (),
