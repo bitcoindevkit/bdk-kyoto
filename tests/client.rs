@@ -5,7 +5,7 @@ use std::time::Duration;
 use tokio::task;
 use tokio::time;
 
-use bdk_kyoto::builder::{NodeBuilder, NodeBuilderExt};
+use bdk_kyoto::builder::{Builder, BuilderExt};
 use bdk_kyoto::{LightClient, ScanType, TrustedPeer};
 use bdk_testenv::bitcoincore_rpc::RpcApi;
 use bdk_testenv::bitcoind;
@@ -48,7 +48,7 @@ fn init_node(
     let port = peer.port();
     let mut peer = TrustedPeer::from_ip(ip);
     peer.port = Some(port);
-    Ok(NodeBuilder::new(Network::Regtest)
+    Ok(Builder::new(Network::Regtest)
         .add_peer(peer)
         .data_dir(tempdir)
         .required_peers(1)
