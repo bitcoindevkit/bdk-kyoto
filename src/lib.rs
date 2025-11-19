@@ -144,7 +144,6 @@ impl UpdateSubscriber {
                         let _ = self
                             .graph
                             .apply_block_relevant(&indexed_block.block, indexed_block.height);
-                        Self::peek_scripts(&self.graph.index, self.graph.index.lookahead());
                     } else {
                         queued_tasks.push(task);
                     }
@@ -198,7 +197,10 @@ impl UpdateSubscriber {
                         let _ = self.graph.apply_block_relevant(&block, height);
                     }
                     self.cp = cp;
-                    Self::peek_scripts(&self.graph.index, self.graph.index.lookahead());
+                    self.spk_cache.extend(Self::peek_scripts(
+                        &self.graph.index,
+                        self.graph.index.lookahead(),
+                    ));
                     return Ok(self.get_scan_response());
                 }
                 _ => (),
