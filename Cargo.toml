@@ -1,6 +1,6 @@
 [package]
 name = "bdk_kyoto"
-version = "0.15.3"
+version = "0.15.4"
 authors = ["Rob rob@2140.dev", "Bitcoin Dev Kit Developers"]
 description = "BDK blockchain integration using P2P light client Kyoto"
 license = "MIT OR Apache-2.0"
