@@ -51,7 +51,6 @@ use bdk_wallet::KeychainKind;
 pub extern crate bip157;
 
 use bip157::chain::BlockHeaderChanges;
-use bip157::IndexedBlock;
 use bip157::ScriptBuf;
 #[doc(inline)]
 pub use bip157::{
@@ -65,8 +64,6 @@ pub use bip157::Receiver;
 #[doc(inline)]
 pub use bip157::UnboundedReceiver;
 
-use bip157::tokio;
-use bip157::tokio::task::JoinHandle;
 #[doc(inline)]
 pub use builder::BuilderExt;
 pub mod builder;
@@ -98,6 +95,8 @@ pub struct UpdateSubscriber {
     cp: CheckPoint,
     // receive graph
     graph: IndexedTxGraph<ConfirmationBlockTime, KeychainTxOutIndex<KeychainKind>>,
+    // queued blocks to fetch
+    queued_blocks: Vec<BlockHash>,
     // queued scripts to check filters
     spk_cache: HashSet<ScriptBuf>,
 }
@@ -122,6 +121,7 @@ impl UpdateSubscriber {
             receiver,
             cp,
             graph,
+            queued_blocks: Vec::new(),
             spk_cache,
         }
     }
@@ -134,35 +134,12 @@ impl UpdateSubscriber {
     /// This method is _not_ cancel safe. You cannot use it within a `tokio::select` arm.
     pub async fn update(&mut self) -> Result<Update, UpdateError> {
         let mut cp = self.cp.clone();
-        let mut queued_tasks: Vec<JoinHandle<Result<IndexedBlock, UpdateError>>> = Vec::new();
         while let Some(message) = self.receiver.recv().await {
-            if !queued_tasks.iter().any(|task| task.is_finished()) {
-                let drained_tasks = core::mem::take(&mut queued_tasks);
-                for task in drained_tasks {
-                    if task.is_finished() {
-                        let indexed_block = task.await.map_err(|_| UpdateError::NodeStopped)??;
-                        let _ = self
-                            .graph
-                            .apply_block_relevant(&indexed_block.block, indexed_block.height);
-                    } else {
-                        queued_tasks.push(task);
-                    }
-                }
-            }
             match message {
                 Event::IndexedFilter(filter) => {
                     let block_hash = filter.block_hash();
                     if filter.contains_any(self.spk_cache.iter()) {
-                        let rx = self
-                            .requester
-                            .request_block(block_hash)
-                            .map_err(|_| UpdateError::NodeStopped)?;
-                        let task_handle = tokio::task::spawn(async move {
-                            rx.await
-                                .map_err(|_| UpdateError::NodeStopped)
-                                .and_then(|e| e.map_err(|_| UpdateError::NodeStopped))
-                        });
-                        queued_tasks.push(task_handle);
+                        self.queued_blocks.push(block_hash);
                     }
                 }
                 // these are emitted for every block
@@ -189,9 +166,12 @@ impl UpdateSubscriber {
                     tip: _,
                     recent_history: _,
                 }) => {
-                    // Await the remaining tasks
-                    for task in core::mem::take(&mut queued_tasks) {
-                        let block = task.await.map_err(|_| UpdateError::NodeStopped)??;
+                    for hash in core::mem::take(&mut self.queued_blocks) {
+                        let block = self
+                            .requester
+                            .get_block(hash)
+                            .await
+                            .map_err(|_| UpdateError::NodeStopped)?;
                         let height = block.height;
                         let block = block.block;
                         let _ = self.graph.apply_block_relevant(&block, height);
