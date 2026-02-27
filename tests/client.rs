@@ -52,7 +52,12 @@ fn init_node(
         .add_peer(peer)
         .data_dir(tempdir)
         .required_peers(1)
-        .build_with_wallet(wallet, ScanType::Sync)?)
+        .build_with_wallet(
+            wallet.spk_index().clone(),
+            wallet.latest_checkpoint(),
+            wallet.network(),
+            ScanType::Sync,
+        )?)
 }
 
 #[tokio::test]
