@@ -321,7 +321,12 @@ impl<W: Wallets> UpdateSubscriber<W> {
                 }
                 Event::ChainUpdate(changeset) => {
                     if let Some(single) = self.single_update_builder.as_mut() {
-                        single.apply_chain_event(changeset);
+                        single.apply_chain_event(&changeset);
+                    }
+                    if let Some(multiple) = self.multiple_updates_builder.as_mut() {
+                        for (_id, builder) in multiple.iter_mut() {
+                            builder.apply_chain_event(&changeset);
+                        }
                     }
                 }
                 Event::FiltersSynced(SyncUpdate {
@@ -335,12 +340,23 @@ impl<W: Wallets> UpdateSubscriber<W> {
                             .await
                             .map_err(|_| UpdateError::NodeStopped)?;
                         if let Some(single) = self.single_update_builder.as_mut() {
-                            single.apply_block_event(block);
+                            single.apply_block_event(&block);
+                        }
+                        if let Some(multiple) = self.multiple_updates_builder.as_mut() {
+                            for (_id, builder) in multiple.iter_mut() {
+                                builder.apply_block_event(&block);
+                            }
                         }
                     }
                     if let Some(single) = self.single_update_builder.as_mut() {
                         self.spk_cache
                             .extend(single.peek_script_to_keychain_lookahead());
+                    }
+                    if let Some(multiple) = self.multiple_updates_builder.as_mut() {
+                        for (_id, builder) in multiple.iter() {
+                            self.spk_cache
+                                .extend(builder.peek_script_to_keychain_lookahead());
+                        }
                     }
                     return Ok(());
                 }
@@ -365,6 +381,29 @@ impl UpdateSubscriber<wallets::Single> {
     }
 }
 
+impl UpdateSubscriber<Multiple> {
+    /// Return a set of [`Update`] for the configured wallets when synced to the network's tip. The
+    /// [`Update`] are grouped with the [`DescriptorId`] of the external descriptor for each
+    /// wallet.
+    ///
+    /// This may take a significant portion of time during wallet recoveries or dormant wallets.
+    /// Note that you may call this method in a loop as long as the node is running.
+    ///
+    /// **Warning**
+    ///
+    /// This method is _not_ cancel safe. You cannot use it within a `tokio::select` arm.
+    pub async fn updates(
+        &mut self,
+    ) -> Result<impl Iterator<Item = (DescriptorId, Update)>, UpdateError> {
+        self.sync().await?;
+        let mut map = BTreeMap::new();
+        for (id, builder) in self.multiple_updates_builder.as_mut().unwrap().iter_mut() {
+            map.insert(*id, builder.finish());
+        }
+        Ok(map.into_iter())
+    }
+}
+
 #[derive(Debug)]
 struct UpdateBuilder {
     // Changes to the wallet local chain.
@@ -381,7 +420,7 @@ impl UpdateBuilder {
         Self { cp, graph }
     }
 
-    fn apply_chain_event(&mut self, event: BlockHeaderChanges) {
+    fn apply_chain_event(&mut self, event: &BlockHeaderChanges) {
         match event {
             BlockHeaderChanges::Connected(at) => {
                 let block_id = BlockId {
@@ -406,10 +445,10 @@ impl UpdateBuilder {
         }
     }
 
-    fn apply_block_event(&mut self, block: IndexedBlock) {
+    fn apply_block_event(&mut self, block: &IndexedBlock) {
         let height = block.height;
-        let block = block.block;
-        let _ = self.graph.apply_block_relevant(&block, height);
+        let block = &block.block;
+        let _ = self.graph.apply_block_relevant(block, height);
     }
 
     #[inline]
