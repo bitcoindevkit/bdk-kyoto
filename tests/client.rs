@@ -1,5 +1,5 @@
 // #![allow(unused)]
-use bdk_kyoto::state::Idle;
+use bdk_kyoto::{state::Idle, wallets::Single};
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -42,7 +42,7 @@ fn init_node(
     env: &TestEnv,
     wallet: &bdk_wallet::Wallet,
     tempdir: PathBuf,
-) -> anyhow::Result<LightClient<Idle>> {
+) -> anyhow::Result<LightClient<Idle, Single>> {
     let peer = env.bitcoind.params.p2p_socket.unwrap();
     let ip: IpAddr = (*peer.ip()).into();
     let port = peer.port();
