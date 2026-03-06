@@ -51,6 +51,7 @@ use bdk_wallet::KeychainKind;
 pub extern crate bip157;
 
 use bip157::chain::BlockHeaderChanges;
+use bip157::IndexedBlock;
 use bip157::ScriptBuf;
 #[doc(inline)]
 pub use bip157::{
@@ -231,6 +232,110 @@ impl UpdateSubscriber {
             spk_cache.extend(bounded_int_iter);
         }
         spk_cache
+    }
+}
+
+#[derive(Debug)]
+struct UpdateBuilder {
+    // Changes to the wallet local chain.
+    cp: CheckPoint,
+    // Transaction graph, required to process incoming blocks.
+    graph: IndexedTxGraph<ConfirmationBlockTime, KeychainTxOutIndex<KeychainKind>>,
+}
+
+impl UpdateBuilder {
+    fn new(
+        cp: CheckPoint,
+        graph: IndexedTxGraph<ConfirmationBlockTime, KeychainTxOutIndex<KeychainKind>>,
+    ) -> Self {
+        Self { cp, graph }
+    }
+
+    fn apply_chain_event(&mut self, event: BlockHeaderChanges) {
+        match event {
+            BlockHeaderChanges::Connected(at) => {
+                let block_id = BlockId {
+                    hash: at.block_hash(),
+                    height: at.height,
+                };
+                self.cp = self.cp.clone().insert(block_id);
+            }
+            BlockHeaderChanges::Reorganized {
+                accepted,
+                reorganized: _,
+            } => {
+                for header in accepted {
+                    let block_id = BlockId {
+                        hash: header.block_hash(),
+                        height: header.height,
+                    };
+                    self.cp = self.cp.clone().insert(block_id);
+                }
+            }
+            _ => (),
+        }
+    }
+
+    fn apply_block_event(&mut self, block: IndexedBlock) {
+        let height = block.height;
+        let block = block.block;
+        let _ = self.graph.apply_block_relevant(&block, height);
+    }
+
+    #[inline]
+    fn peek_scripts_from_scantype(&self, scan_type: ScanType) -> HashSet<ScriptBuf> {
+        match scan_type {
+            ScanType::Sync => self.peek_script_to_keychain_lookahead(),
+            ScanType::Recovery {
+                used_script_index,
+                checkpoint: _,
+            } => self.peek_scripts(used_script_index),
+        }
+    }
+
+    #[inline]
+    fn peek_script_to_keychain_lookahead(&self) -> HashSet<ScriptBuf> {
+        self.peek_scripts(self.graph.index.lookahead())
+    }
+
+    fn peek_scripts(&self, to_index: u32) -> HashSet<ScriptBuf> {
+        let mut spk_cache = HashSet::new();
+        let keychain = &self.graph.index;
+        // We pre-compute an SPK cache so as to not call `unbounded_spk_iter` for each filter
+        let last_revealed = keychain.last_revealed_indices();
+        let ext_index = last_revealed
+            .get(&KeychainKind::External)
+            .copied()
+            .unwrap_or(0);
+        let unbounded_ext_spk_iter = keychain
+            .unbounded_spk_iter(KeychainKind::External)
+            .expect("wallet must have external keychain");
+        let bound = (ext_index + to_index) as usize;
+        let bounded_ext_iter = unbounded_ext_spk_iter.take(bound).map(|(_, script)| script);
+        spk_cache.extend(bounded_ext_iter);
+        let int_index = last_revealed
+            .get(&KeychainKind::Internal)
+            .copied()
+            .unwrap_or(0);
+        let unbounded_int_spk_iter = keychain.unbounded_spk_iter(KeychainKind::Internal);
+        if let Some(int_spk_iter) = unbounded_int_spk_iter {
+            let bound = (int_index + to_index) as usize;
+            let bounded_int_iter = int_spk_iter.take(bound).map(|(_, script)| script);
+            spk_cache.extend(bounded_int_iter);
+        }
+        spk_cache
+    }
+
+    fn finish(&mut self) -> Update {
+        let tx_update = TxUpdate::from(self.graph.graph().clone());
+        let graph = core::mem::take(&mut self.graph);
+        let last_active_indices = graph.index.last_used_indices();
+        self.graph = IndexedTxGraph::new(graph.index);
+        Update {
+            tx_update,
+            last_active_indices,
+            chain: Some(self.cp.clone()),
+        }
     }
 }
 
