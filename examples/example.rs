@@ -62,9 +62,12 @@ async fn main() -> anyhow::Result<()> {
         warning_subscriber,
         mut update_subscriber,
         node,
-    } = Builder::new(NETWORK)
-        .build_with_wallet(&wallet, scan_type)
-        .unwrap();
+    } = Builder::new(NETWORK).build_with_wallet(
+        wallet.spk_index().clone(),
+        wallet.latest_checkpoint(),
+        wallet.network(),
+        scan_type,
+    )?;
 
     tokio::task::spawn(async move { node.run().await });
     tokio::task::spawn(async move { traces(info_subscriber, warning_subscriber).await });

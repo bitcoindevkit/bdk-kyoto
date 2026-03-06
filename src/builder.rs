@@ -52,9 +52,11 @@
 
 use std::fmt::Display;
 
+use bdk_wallet::bitcoin::Network;
+use bdk_wallet::chain::keychain_txout::KeychainTxOutIndex;
 use bdk_wallet::{
     chain::{CheckPoint, IndexedTxGraph},
-    Wallet,
+    KeychainKind,
 };
 pub use bip157::Builder;
 use bip157::{chain::ChainState, HeaderCheckpoint};
@@ -68,7 +70,9 @@ pub trait BuilderExt {
     /// Attempt to build the node with scripts from a [`Wallet`] and following a [`ScanType`].
     fn build_with_wallet(
         self,
-        wallet: &Wallet,
+        txout_index: KeychainTxOutIndex<KeychainKind>,
+        chain_tip: CheckPoint,
+        network: Network,
         scan_type: ScanType,
     ) -> Result<LightClient, BuilderError>;
 }
@@ -76,16 +80,17 @@ pub trait BuilderExt {
 impl BuilderExt for Builder {
     fn build_with_wallet(
         mut self,
-        wallet: &Wallet,
+        txout_index: KeychainTxOutIndex<KeychainKind>,
+        chain_tip: CheckPoint,
+        network: Network,
         scan_type: ScanType,
     ) -> Result<LightClient, BuilderError> {
-        let network = wallet.network();
         if self.network().ne(&network) {
             return Err(BuilderError::NetworkMismatch);
         }
         match scan_type {
             ScanType::Sync => {
-                let current_cp = wallet.latest_checkpoint();
+                let current_cp = chain_tip.clone();
                 let sync_start = walk_back_max_reorg(current_cp);
                 self = self.chain_state(ChainState::Checkpoint(sync_start));
             }
@@ -101,12 +106,12 @@ impl BuilderExt for Builder {
             warn_rx,
             event_rx,
         } = client;
-        let indexed_graph = IndexedTxGraph::new(wallet.spk_index().clone());
+        let indexed_graph = IndexedTxGraph::new(txout_index);
         let update_subscriber = UpdateSubscriber::new(
             requester.clone(),
             scan_type,
             event_rx,
-            wallet.latest_checkpoint(),
+            chain_tip,
             indexed_graph,
         );
         Ok(LightClient {
