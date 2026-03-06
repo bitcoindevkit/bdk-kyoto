@@ -64,7 +64,7 @@ pub trait BuilderExt {
         self,
         wallet: &Wallet,
         scan_type: ScanType,
-    ) -> Result<LightClient<Idle>, BuilderError>;
+    ) -> Result<LightClient<Idle, crate::Single>, BuilderError>;
 }
 
 impl BuilderExt for Builder {
@@ -72,7 +72,7 @@ impl BuilderExt for Builder {
         mut self,
         wallet: &Wallet,
         scan_type: ScanType,
-    ) -> Result<LightClient<Idle>, BuilderError> {
+    ) -> Result<LightClient<Idle, crate::Single>, BuilderError> {
         let network = wallet.network();
         if self.network().ne(&network) {
             return Err(BuilderError::NetworkMismatch);
@@ -96,7 +96,7 @@ impl BuilderExt for Builder {
             event_rx,
         } = client;
         let indexed_graph = IndexedTxGraph::new(wallet.spk_index().clone());
-        let update_subscriber = UpdateSubscriber::new(
+        let update_subscriber = UpdateSubscriber::<crate::Single>::new(
             requester.clone(),
             scan_type,
             event_rx,
