@@ -47,8 +47,11 @@
 use std::fmt::Display;
 
 use bdk_wallet::{
-    chain::{CheckPoint, IndexedTxGraph},
-    Wallet,
+    chain::{
+        keychain_txout::KeychainTxOutIndex, CheckPoint, ConfirmationBlockTime, DescriptorExt,
+        DescriptorId, IndexedTxGraph,
+    },
+    KeychainKind, Wallet,
 };
 pub use bip157::Builder;
 use bip157::{chain::ChainState, HeaderCheckpoint};
@@ -65,6 +68,12 @@ pub trait BuilderExt {
         wallet: &Wallet,
         scan_type: ScanType,
     ) -> Result<LightClient<Idle, crate::Single>, BuilderError>;
+
+    /// Attempt to build the node with scripts from multiple [`Wallet`]s and following a [`ScanType`].
+    fn build_with_wallets(
+        self,
+        wallets: Vec<(&Wallet, ScanType)>,
+    ) -> Result<LightClient<Idle, crate::Multiple>, BuilderError>;
 }
 
 impl BuilderExt for Builder {
@@ -114,6 +123,72 @@ impl BuilderExt for Builder {
         );
         Ok(client)
     }
+
+    fn build_with_wallets(
+        mut self,
+        wallets: Vec<(&Wallet, ScanType)>,
+    ) -> Result<LightClient<Idle, crate::Multiple>, BuilderError> {
+        let network = wallets
+            .first()
+            .ok_or(BuilderError::EmptyIterator)?
+            .0
+            .network();
+        if self.network().ne(&network) {
+            return Err(BuilderError::NetworkMismatch);
+        }
+        let cp_min = wallets
+            .iter()
+            .map(|(wallet, scan_type)| match scan_type {
+                ScanType::Sync => walk_back_max_reorg(wallet.latest_checkpoint()),
+                ScanType::Recovery {
+                    used_script_index: _,
+                    checkpoint,
+                } => *checkpoint,
+            })
+            .min()
+            .ok_or(BuilderError::EmptyIterator)?;
+        self = self.chain_state(ChainState::Checkpoint(cp_min));
+        let (node, client) = self.build();
+        let bip157::Client {
+            requester,
+            info_rx,
+            warn_rx,
+            event_rx,
+        } = client;
+        let wallet_iter = wallets
+            .into_iter()
+            .map(|(wallet, scan_type)| {
+                (
+                    wallet
+                        .public_descriptor(KeychainKind::External)
+                        .descriptor_id(),
+                    scan_type,
+                    wallet.latest_checkpoint(),
+                    IndexedTxGraph::new(wallet.spk_index().clone()),
+                )
+            })
+            .collect::<Vec<(
+                DescriptorId,
+                ScanType,
+                CheckPoint,
+                IndexedTxGraph<ConfirmationBlockTime, KeychainTxOutIndex<KeychainKind>>,
+            )>>();
+        let update_subscriber = UpdateSubscriber::<crate::Multiple>::new_multiple(
+            requester.clone(),
+            event_rx,
+            wallet_iter.into_iter(),
+        );
+        let client = LightClient::new(
+            requester,
+            LoggingSubscribers {
+                info_subscriber: info_rx,
+                warning_subscriber: warn_rx,
+            },
+            update_subscriber,
+            node,
+        );
+        Ok(client)
+    }
 }
 
 /// Walk back 7 blocks in case the last sync was an orphan block.
@@ -134,6 +209,8 @@ fn walk_back_max_reorg(checkpoint: CheckPoint) -> HeaderCheckpoint {
 pub enum BuilderError {
     /// The wallet network and node network do not match.
     NetworkMismatch,
+    /// The wallet iterator is empty.
+    EmptyIterator,
 }
 
 impl Display for BuilderError {
@@ -142,6 +219,7 @@ impl Display for BuilderError {
             BuilderError::NetworkMismatch => {
                 write!(f, "wallet network and node network do not match")
             }
+            BuilderError::EmptyIterator => write!(f, "empty wallet iterator."),
         }
     }
 }
