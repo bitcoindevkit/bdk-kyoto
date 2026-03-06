@@ -381,7 +381,7 @@ impl UpdateSubscriber<wallets::Single> {
     }
 }
 
-impl UpdateSubscriber<Multiple> {
+impl UpdateSubscriber<wallets::Multiple> {
     /// Return a set of [`Update`] for the configured wallets when synced to the network's tip. The
     /// [`Update`] are grouped with the [`DescriptorId`] of the external descriptor for each
     /// wallet.
