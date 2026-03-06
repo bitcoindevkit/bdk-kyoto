@@ -51,7 +51,7 @@ use bip157::ScriptBuf;
 #[doc(inline)]
 pub use bip157::{
     BlockHash, ClientError, FeeRate, HeaderCheckpoint, Info, Node, RejectPayload, RejectReason,
-    Requester, TrustedPeer, TxBroadcast, TxBroadcastPolicy, Warning, Wtxid,
+    Requester, TrustedPeer, Warning, Wtxid,
 };
 use bip157::{Event, SyncUpdate};
 
