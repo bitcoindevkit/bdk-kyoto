@@ -30,13 +30,7 @@
 //!
 //!     let scan_type = ScanType::Sync;
 //!
-//!     let LightClient {
-//!         requester,
-//!         info_subscriber,
-//!         warning_subscriber,
-//!         update_subscriber,
-//!         node
-//!     } = Builder::new(Network::Signet)
+//!     let client = Builder::new(Network::Signet)
 //!         // A node may handle multiple connections
 //!         .required_peers(2)
 //!         // Choose where to store node data
@@ -59,7 +53,7 @@ use bdk_wallet::{
 pub use bip157::Builder;
 use bip157::{chain::ChainState, HeaderCheckpoint};
 
-use crate::{LightClient, ScanType, UpdateSubscriber};
+use crate::{Idle, LightClient, LoggingSubscribers, ScanType, UpdateSubscriber};
 
 const IMPOSSIBLE_REORG_DEPTH: usize = 7;
 
@@ -70,7 +64,7 @@ pub trait BuilderExt {
         self,
         wallet: &Wallet,
         scan_type: ScanType,
-    ) -> Result<LightClient, BuilderError>;
+    ) -> Result<LightClient<Idle>, BuilderError>;
 }
 
 impl BuilderExt for Builder {
@@ -78,7 +72,7 @@ impl BuilderExt for Builder {
         mut self,
         wallet: &Wallet,
         scan_type: ScanType,
-    ) -> Result<LightClient, BuilderError> {
+    ) -> Result<LightClient<Idle>, BuilderError> {
         let network = wallet.network();
         if self.network().ne(&network) {
             return Err(BuilderError::NetworkMismatch);
@@ -109,13 +103,16 @@ impl BuilderExt for Builder {
             wallet.latest_checkpoint(),
             indexed_graph,
         );
-        Ok(LightClient {
+        let client = LightClient::new(
             requester,
-            info_subscriber: info_rx,
-            warning_subscriber: warn_rx,
+            LoggingSubscribers {
+                info_subscriber: info_rx,
+                warning_subscriber: warn_rx,
+            },
             update_subscriber,
             node,
-        })
+        );
+        Ok(client)
     }
 }
 

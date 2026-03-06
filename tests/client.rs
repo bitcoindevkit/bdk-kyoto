@@ -1,8 +1,8 @@
 // #![allow(unused)]
+use bdk_kyoto::Idle;
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::time::Duration;
-use tokio::task;
 use tokio::time;
 
 use bdk_kyoto::builder::{Builder, BuilderExt};
@@ -42,7 +42,7 @@ fn init_node(
     env: &TestEnv,
     wallet: &bdk_wallet::Wallet,
     tempdir: PathBuf,
-) -> anyhow::Result<LightClient> {
+) -> anyhow::Result<LightClient<Idle>> {
     let peer = env.bitcoind.params.p2p_socket.unwrap();
     let ip: IpAddr = (*peer.ip()).into();
     let port = peer.port();
@@ -73,12 +73,8 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
 
     // build node/client
     let tempdir = tempfile::tempdir()?.path().join("kyoto-data");
-    let LightClient {
-        requester,
-        mut update_subscriber,
-        node,
-        ..
-    } = init_node(&env, &wallet, tempdir)?;
+    let client = init_node(&env, &wallet, tempdir)?;
+    let (client, _, mut update_subscriber) = client.subscribe();
 
     // mine blocks
     let _hashes = env.mine_blocks(100, Some(miner.clone()))?;
@@ -90,8 +86,9 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
     let hashes = env.mine_blocks(1, Some(miner))?;
     wait_for_height(&env, 102).await?;
 
-    // run node
-    task::spawn(async move { node.run().await });
+    let client = client.start();
+    let requester = client.requester();
+
     // get update
     let res = update_subscriber.update().await?;
     let Update {
@@ -131,12 +128,8 @@ async fn update_handles_reorg() -> anyhow::Result<()> {
     let addr = wallet.peek_address(KeychainKind::External, 0).address;
 
     let tempdir = tempfile::tempdir()?.path().join("kyoto-data");
-    let LightClient {
-        requester,
-        mut update_subscriber,
-        node,
-        ..
-    } = init_node(&env, &wallet, tempdir)?;
+    let client = init_node(&env, &wallet, tempdir)?;
+    let (client, _, mut update_subscriber) = client.subscribe();
 
     // mine blocks
     let miner = env
@@ -153,7 +146,8 @@ async fn update_handles_reorg() -> anyhow::Result<()> {
     let blockhash = hashes[0];
     wait_for_height(&env, 102).await?;
 
-    task::spawn(async move { node.run().await });
+    let client = client.start();
+    let requester = client.requester();
 
     // get update
     let res = update_subscriber.update().await?;
@@ -192,12 +186,10 @@ async fn update_handles_dormant_wallet() -> anyhow::Result<()> {
     let addr = wallet.peek_address(KeychainKind::External, 0).address;
 
     let tempdir = tempfile::tempdir()?.path().join("kyoto-data");
-    let LightClient {
-        requester,
-        mut update_subscriber,
-        node,
-        ..
-    } = init_node(&env, &wallet, tempdir.clone())?;
+    let client = init_node(&env, &wallet, tempdir.clone())?;
+    let (client, _, mut update_subscriber) = client.subscribe();
+    let client = client.start();
+    let requester = client.requester();
 
     // mine blocks
     let miner = env
@@ -214,8 +206,6 @@ async fn update_handles_dormant_wallet() -> anyhow::Result<()> {
     let blockhash = hashes[0];
     wait_for_height(&env, 102).await?;
 
-    task::spawn(async move { node.run().await });
-
     // get update
     let res = update_subscriber.update().await?;
     let (anchor, anchor_txid) = *res.tx_update.anchors.iter().next().unwrap();
@@ -231,14 +221,10 @@ async fn update_handles_dormant_wallet() -> anyhow::Result<()> {
     _ = env.mine_blocks(20, Some(miner))?; // 122
     wait_for_height(&env, 122).await?;
 
-    let LightClient {
-        requester,
-        mut update_subscriber,
-        node,
-        ..
-    } = init_node(&env, &wallet, tempdir)?;
-
-    task::spawn(async move { node.run().await });
+    let client = init_node(&env, &wallet, tempdir)?;
+    let (client, _, mut update_subscriber) = client.subscribe();
+    let client = client.start();
+    let requester = client.requester();
 
     // expect tx to confirm at same height but different blockhash
     let res = update_subscriber.update().await?;
