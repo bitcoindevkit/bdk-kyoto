@@ -92,10 +92,8 @@ pub struct UpdateSubscriber {
     requester: Requester,
     // channel receiver
     receiver: UnboundedReceiver<Event>,
-    // changes to local chain
-    cp: CheckPoint,
-    // receive graph
-    graph: IndexedTxGraph<ConfirmationBlockTime, KeychainTxOutIndex<KeychainKind>>,
+    // processes events for the wallet.
+    update_builder: UpdateBuilder,
     // queued blocks to fetch
     queued_blocks: Vec<BlockHash>,
     // queued scripts to check filters
@@ -110,18 +108,12 @@ impl UpdateSubscriber {
         cp: CheckPoint,
         graph: IndexedTxGraph<ConfirmationBlockTime, KeychainTxOutIndex<KeychainKind>>,
     ) -> Self {
-        let spk_cache = match scan_type {
-            ScanType::Sync => Self::peek_scripts(&graph.index, graph.index.lookahead()),
-            ScanType::Recovery {
-                used_script_index,
-                checkpoint: _,
-            } => Self::peek_scripts(&graph.index, used_script_index),
-        };
+        let update_builder = UpdateBuilder::new(cp, graph);
+        let spk_cache = update_builder.peek_scripts_from_scantype(scan_type);
         Self {
             requester,
             receiver,
-            cp,
-            graph,
+            update_builder,
             queued_blocks: Vec::new(),
             spk_cache,
         }
@@ -134,7 +126,6 @@ impl UpdateSubscriber {
     ///
     /// This method is _not_ cancel safe. You cannot use it within a `tokio::select` arm.
     pub async fn update(&mut self) -> Result<Update, UpdateError> {
-        let mut cp = self.cp.clone();
         while let Some(message) = self.receiver.recv().await {
             match message {
                 Event::IndexedFilter(filter) => {
@@ -143,25 +134,8 @@ impl UpdateSubscriber {
                         self.queued_blocks.push(block_hash);
                     }
                 }
-                // these are emitted for every block
-                Event::ChainUpdate(BlockHeaderChanges::Connected(at)) => {
-                    let block_id = BlockId {
-                        hash: at.block_hash(),
-                        height: at.height,
-                    };
-                    cp = cp.insert(block_id);
-                }
-                Event::ChainUpdate(BlockHeaderChanges::Reorganized {
-                    accepted,
-                    reorganized: _,
-                }) => {
-                    for header in accepted {
-                        let block_id = BlockId {
-                            hash: header.block_hash(),
-                            height: header.height,
-                        };
-                        cp = cp.insert(block_id);
-                    }
+                Event::ChainUpdate(changeset) => {
+                    self.update_builder.apply_chain_event(changeset);
                 }
                 Event::FiltersSynced(SyncUpdate {
                     tip: _,
@@ -173,65 +147,16 @@ impl UpdateSubscriber {
                             .get_block(hash)
                             .await
                             .map_err(|_| UpdateError::NodeStopped)?;
-                        let height = block.height;
-                        let block = block.block;
-                        let _ = self.graph.apply_block_relevant(&block, height);
+                        self.update_builder.apply_block_event(block);
                     }
-                    self.cp = cp;
-                    self.spk_cache.extend(Self::peek_scripts(
-                        &self.graph.index,
-                        self.graph.index.lookahead(),
-                    ));
-                    return Ok(self.get_scan_response());
+                    self.spk_cache
+                        .extend(self.update_builder.peek_script_to_keychain_lookahead());
+                    return Ok(self.update_builder.finish());
                 }
                 _ => (),
             }
         }
         Err(UpdateError::NodeStopped)
-    }
-
-    // When the client is believed to have synced to the chain tip of most work,
-    // we can return a wallet update.
-    fn get_scan_response(&mut self) -> Update {
-        let tx_update = TxUpdate::from(self.graph.graph().clone());
-        let graph = core::mem::take(&mut self.graph);
-        let last_active_indices = graph.index.last_used_indices();
-        self.graph = IndexedTxGraph::new(graph.index);
-        Update {
-            tx_update,
-            last_active_indices,
-            chain: Some(self.cp.clone()),
-        }
-    }
-
-    fn peek_scripts(
-        keychain: &KeychainTxOutIndex<KeychainKind>,
-        to_index: u32,
-    ) -> HashSet<ScriptBuf> {
-        let mut spk_cache = HashSet::new();
-        // We pre-compute an SPK cache so as to not call `unbounded_spk_iter` for each filter
-        let last_revealed = keychain.last_revealed_indices();
-        let ext_index = last_revealed
-            .get(&KeychainKind::External)
-            .copied()
-            .unwrap_or(0);
-        let unbounded_ext_spk_iter = keychain
-            .unbounded_spk_iter(KeychainKind::External)
-            .expect("wallet must have external keychain");
-        let bound = (ext_index + to_index) as usize;
-        let bounded_ext_iter = unbounded_ext_spk_iter.take(bound).map(|(_, script)| script);
-        spk_cache.extend(bounded_ext_iter);
-        let int_index = last_revealed
-            .get(&KeychainKind::Internal)
-            .copied()
-            .unwrap_or(0);
-        let unbounded_int_spk_iter = keychain.unbounded_spk_iter(KeychainKind::Internal);
-        if let Some(int_spk_iter) = unbounded_int_spk_iter {
-            let bound = (int_index + to_index) as usize;
-            let bounded_int_iter = int_spk_iter.take(bound).map(|(_, script)| script);
-            spk_cache.extend(bounded_int_iter);
-        }
-        spk_cache
     }
 }
 
