@@ -32,10 +32,12 @@
 //! ```
 
 #![warn(missing_docs)]
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 
 use bdk_wallet::chain::BlockId;
 use bdk_wallet::chain::CheckPoint;
+use bdk_wallet::chain::DescriptorId;
 pub use bdk_wallet::Update;
 
 use bdk_wallet::chain::{keychain_txout::KeychainTxOutIndex, IndexedTxGraph};
@@ -103,25 +105,25 @@ pub struct LoggingSubscribers {
 ///   running yet
 /// - [`Active`]: the client is actively fetching data and may now handle requests.
 #[derive(Debug)]
-pub struct LightClient<S: State> {
+pub struct LightClient<S: State, W: Wallets> {
     // Send events to a running node (i.e. broadcast a transaction).
     requester: Requester,
     // Receive info/warnings from the node as it runs.
     logging_subscribers: Option<LoggingSubscribers>,
     // Receive wallet updates from a node.
-    update_subscriber: Option<UpdateSubscriber>,
+    update_subscriber: Option<UpdateSubscriber<W>>,
     // The underlying node that must be run to fetch blocks from peers.
     node: Option<Node>,
     _marker: core::marker::PhantomData<S>,
 }
 
-impl LightClient<Idle> {
+impl<W: Wallets> LightClient<Idle, W> {
     fn new(
         requester: Requester,
         logging: LoggingSubscribers,
-        update: UpdateSubscriber,
+        update: UpdateSubscriber<W>,
         node: bip157::Node,
-    ) -> LightClient<Idle> {
+    ) -> LightClient<Idle, W> {
         LightClient {
             requester,
             logging_subscribers: Some(logging),
@@ -143,9 +145,9 @@ impl LightClient<Idle> {
     pub fn subscribe(
         mut self,
     ) -> (
-        LightClient<Subscribed>,
+        LightClient<Subscribed, W>,
         LoggingSubscribers,
-        UpdateSubscriber,
+        UpdateSubscriber<W>,
     ) {
         let logging =
             core::mem::take(&mut self.logging_subscribers).expect("cannot subscribe twice.");
@@ -162,7 +164,7 @@ impl LightClient<Idle> {
     }
 }
 
-impl LightClient<Subscribed> {
+impl<W: Wallets> LightClient<Subscribed, W> {
     /// Start fetching data for the wallet on a dedicated [`tokio::task`]. This will continually
     /// run until terminated or no peers could be found.
     ///
@@ -170,7 +172,7 @@ impl LightClient<Subscribed> {
     ///
     /// If there is no [`tokio::runtime::Runtime`] to drive execution. Common in synchronous
     /// setups.
-    pub fn start(mut self) -> LightClient<Active> {
+    pub fn start(mut self) -> LightClient<Active, W> {
         let node = core::mem::take(&mut self.node).expect("cannot start twice.");
         tokio::task::spawn(async move { node.run().await });
         LightClient {
@@ -184,7 +186,7 @@ impl LightClient<Subscribed> {
 
     /// Take the underlying node process to run in a custom way. Examples include using a dedicated
     /// [`tokio::runtime::Runtime`] or [`tokio::runtime::Handle`] to drive execution.
-    pub fn managed_start(mut self) -> (LightClient<Active>, Node) {
+    pub fn managed_start(mut self) -> (LightClient<Active, W>, Node) {
         let node = core::mem::take(&mut self.node).expect("cannot start twice.");
         let client = LightClient {
             requester: self.requester,
@@ -197,67 +199,112 @@ impl LightClient<Subscribed> {
     }
 }
 
-impl LightClient<Active> {
+impl<W: Wallets> LightClient<Active, W> {
     /// The client is active and may now handle requests with a [`Requester`].
     pub fn requester(self) -> Requester {
         self.requester
     }
 }
 
-impl From<LightClient<Active>> for Requester {
-    fn from(value: LightClient<Active>) -> Self {
+impl<W: Wallets> From<LightClient<Active, W>> for Requester {
+    fn from(value: LightClient<Active, W>) -> Self {
         value.requester
     }
 }
 
-impl AsRef<Requester> for LightClient<Active> {
+impl<W: Wallets> AsRef<Requester> for LightClient<Active, W> {
     fn as_ref(&self) -> &Requester {
         &self.requester
     }
 }
 
+/// Client for a single wallet.
+#[derive(Debug)]
+pub struct Single;
+/// Client for multiple wallets.
+#[derive(Debug)]
+pub struct Multiple;
+
+impl sealed::Sealed for Single {}
+impl sealed::Sealed for Multiple {}
+
+/// Number of wallets.
+pub trait Wallets: sealed::Sealed {}
+
+impl Wallets for Single {}
+impl Wallets for Multiple {}
+
 /// Interpret events from a node that is running to apply
 /// updates to an underlying wallet.
 #[derive(Debug)]
-pub struct UpdateSubscriber {
+pub struct UpdateSubscriber<W: Wallets> {
     // request information from the client
     requester: Requester,
     // channel receiver
     receiver: UnboundedReceiver<Event>,
-    // processes events for the wallet.
-    update_builder: UpdateBuilder,
     // queued blocks to fetch
     queued_blocks: Vec<BlockHash>,
     // queued scripts to check filters
     spk_cache: HashSet<ScriptBuf>,
+    // processes events for the wallet.
+    single_update_builder: Option<UpdateBuilder>,
+    // process events for multiple wallets.
+    multiple_updates_builder: Option<BTreeMap<DescriptorId, UpdateBuilder>>,
+    _marker: core::marker::PhantomData<W>,
 }
 
-impl UpdateSubscriber {
+impl<W: Wallets> UpdateSubscriber<W> {
     fn new(
         requester: Requester,
         scan_type: ScanType,
         receiver: UnboundedReceiver<Event>,
         cp: CheckPoint,
         graph: IndexedTxGraph<ConfirmationBlockTime, KeychainTxOutIndex<KeychainKind>>,
-    ) -> Self {
+    ) -> UpdateSubscriber<Single> {
         let update_builder = UpdateBuilder::new(cp, graph);
         let spk_cache = update_builder.peek_scripts_from_scantype(scan_type);
-        Self {
+        UpdateSubscriber {
             requester,
             receiver,
-            update_builder,
+            single_update_builder: Some(update_builder),
+            multiple_updates_builder: None,
             queued_blocks: Vec::new(),
             spk_cache,
+            _marker: core::marker::PhantomData,
         }
     }
-    /// Return the most recent update from the node once it has synced to the network's tip.
-    /// This may take a significant portion of time during wallet recoveries or dormant wallets.
-    /// Note that you may call this method in a loop as long as the node is running.
-    ///
-    /// **Warning**
-    ///
-    /// This method is _not_ cancel safe. You cannot use it within a `tokio::select` arm.
-    pub async fn update(&mut self) -> Result<Update, UpdateError> {
+
+    fn new_multiple(
+        requester: Requester,
+        receiver: UnboundedReceiver<Event>,
+        wallet_iter: impl Iterator<
+            Item = (
+                DescriptorId,
+                ScanType,
+                CheckPoint,
+                IndexedTxGraph<ConfirmationBlockTime, KeychainTxOutIndex<KeychainKind>>,
+            ),
+        >,
+    ) -> UpdateSubscriber<Multiple> {
+        let mut update_map = BTreeMap::new();
+        let mut spk_cache = HashSet::new();
+        for wallet in wallet_iter {
+            let update_builder = UpdateBuilder::new(wallet.2, wallet.3);
+            spk_cache.extend(update_builder.peek_scripts_from_scantype(wallet.1));
+            update_map.insert(wallet.0, update_builder);
+        }
+        UpdateSubscriber {
+            requester,
+            receiver,
+            single_update_builder: None,
+            multiple_updates_builder: Some(update_map),
+            queued_blocks: Vec::new(),
+            spk_cache,
+            _marker: core::marker::PhantomData,
+        }
+    }
+
+    async fn sync(&mut self) -> Result<(), UpdateError> {
         while let Some(message) = self.receiver.recv().await {
             match message {
                 Event::IndexedFilter(filter) => {
@@ -267,7 +314,14 @@ impl UpdateSubscriber {
                     }
                 }
                 Event::ChainUpdate(changeset) => {
-                    self.update_builder.apply_chain_event(changeset);
+                    if let Some(single) = self.single_update_builder.as_mut() {
+                        single.apply_chain_event(&changeset);
+                    }
+                    if let Some(multiple) = self.multiple_updates_builder.as_mut() {
+                        for (_id, builder) in multiple.iter_mut() {
+                            builder.apply_chain_event(&changeset);
+                        }
+                    }
                 }
                 Event::FiltersSynced(SyncUpdate {
                     tip: _,
@@ -279,16 +333,68 @@ impl UpdateSubscriber {
                             .get_block(hash)
                             .await
                             .map_err(|_| UpdateError::NodeStopped)?;
-                        self.update_builder.apply_block_event(block);
+                        if let Some(single) = self.single_update_builder.as_mut() {
+                            single.apply_block_event(&block);
+                        }
+                        if let Some(multiple) = self.multiple_updates_builder.as_mut() {
+                            for (_id, builder) in multiple.iter_mut() {
+                                builder.apply_block_event(&block);
+                            }
+                        }
                     }
-                    self.spk_cache
-                        .extend(self.update_builder.peek_script_to_keychain_lookahead());
-                    return Ok(self.update_builder.finish());
+                    if let Some(single) = self.single_update_builder.as_mut() {
+                        self.spk_cache
+                            .extend(single.peek_script_to_keychain_lookahead());
+                    }
+                    if let Some(multiple) = self.multiple_updates_builder.as_mut() {
+                        for (_id, builder) in multiple.iter() {
+                            self.spk_cache
+                                .extend(builder.peek_script_to_keychain_lookahead());
+                        }
+                    }
+                    return Ok(());
                 }
                 _ => (),
             }
         }
         Err(UpdateError::NodeStopped)
+    }
+}
+
+impl UpdateSubscriber<Single> {
+    /// Return the most recent [`Update`] for a wallet once it has synced to the network's tip.
+    /// This may take a significant portion of time during wallet recoveries or dormant wallets.
+    /// Note that you may call this method in a loop as long as the node is running.
+    ///
+    /// **Warning**
+    ///
+    /// This method is _not_ cancel safe. You cannot use it within a `tokio::select` arm.
+    pub async fn update(&mut self) -> Result<Update, UpdateError> {
+        self.sync().await?;
+        Ok(self.single_update_builder.as_mut().unwrap().finish())
+    }
+}
+
+impl UpdateSubscriber<Multiple> {
+    /// Return a set of [`Update`] for the configured wallets when synced to the network's tip. The
+    /// [`Update`] are grouped with the [`DescriptorId`] of the external descriptor for each
+    /// wallet.
+    ///
+    /// This may take a significant portion of time during wallet recoveries or dormant wallets.
+    /// Note that you may call this method in a loop as long as the node is running.
+    ///
+    /// **Warning**
+    ///
+    /// This method is _not_ cancel safe. You cannot use it within a `tokio::select` arm.
+    pub async fn updates(
+        &mut self,
+    ) -> Result<impl Iterator<Item = (DescriptorId, Update)>, UpdateError> {
+        self.sync().await?;
+        let mut map = BTreeMap::new();
+        for (id, builder) in self.multiple_updates_builder.as_mut().unwrap().iter_mut() {
+            map.insert(*id, builder.finish());
+        }
+        Ok(map.into_iter())
     }
 }
 
@@ -308,7 +414,7 @@ impl UpdateBuilder {
         Self { cp, graph }
     }
 
-    fn apply_chain_event(&mut self, event: BlockHeaderChanges) {
+    fn apply_chain_event(&mut self, event: &BlockHeaderChanges) {
         match event {
             BlockHeaderChanges::Connected(at) => {
                 let block_id = BlockId {
@@ -333,10 +439,10 @@ impl UpdateBuilder {
         }
     }
 
-    fn apply_block_event(&mut self, block: IndexedBlock) {
+    fn apply_block_event(&mut self, block: &IndexedBlock) {
         let height = block.height;
-        let block = block.block;
-        let _ = self.graph.apply_block_relevant(&block, height);
+        let block = &block.block;
+        let _ = self.graph.apply_block_relevant(block, height);
     }
 
     #[inline]
