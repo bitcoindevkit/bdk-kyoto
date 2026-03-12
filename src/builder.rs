@@ -53,7 +53,7 @@ use bdk_wallet::{
 pub use bip157::Builder;
 use bip157::{chain::ChainState, HeaderCheckpoint};
 
-use crate::{Idle, LightClient, LoggingSubscribers, ScanType, UpdateSubscriber};
+use crate::{state::Idle, LightClient, LoggingSubscribers, ScanType, UpdateSubscriber};
 
 const IMPOSSIBLE_REORG_DEPTH: usize = 7;
 

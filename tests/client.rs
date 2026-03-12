@@ -1,5 +1,5 @@
 // #![allow(unused)]
-use bdk_kyoto::Idle;
+use bdk_kyoto::state::Idle;
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::time::Duration;
