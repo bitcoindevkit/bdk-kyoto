@@ -64,27 +64,30 @@ pub use bip157::UnboundedReceiver;
 pub use builder::BuilderExt;
 pub mod builder;
 
-/// Client state when idle.
-pub struct Idle;
-/// Client state when subscribed to events.
-pub struct Subscribed;
-/// Client state when active.
-pub struct Active;
+/// State of the light client.
+pub mod state {
+    /// Client state when idle.
+    pub struct Idle;
+    /// Client state when subscribed to events.
+    pub struct Subscribed;
+    /// Client state when active.
+    pub struct Active;
+}
 
 mod sealed {
     pub trait Sealed {}
 }
 
-impl sealed::Sealed for Idle {}
-impl sealed::Sealed for Subscribed {}
-impl sealed::Sealed for Active {}
+impl sealed::Sealed for state::Idle {}
+impl sealed::Sealed for state::Subscribed {}
+impl sealed::Sealed for state::Active {}
 
 /// State of the client.
 pub trait State: sealed::Sealed {}
 
-impl State for Idle {}
-impl State for Subscribed {}
-impl State for Active {}
+impl State for state::Idle {}
+impl State for state::Subscribed {}
+impl State for state::Active {}
 
 /// Subscribe to events, notably
 #[derive(Debug)]
@@ -115,13 +118,13 @@ pub struct LightClient<S: State> {
     _marker: core::marker::PhantomData<S>,
 }
 
-impl LightClient<Idle> {
+impl LightClient<state::Idle> {
     fn new(
         requester: Requester,
         logging: LoggingSubscribers,
         update: UpdateSubscriber,
         node: bip157::Node,
-    ) -> LightClient<Idle> {
+    ) -> LightClient<state::Idle> {
         LightClient {
             requester,
             logging_subscribers: Some(logging),
@@ -143,7 +146,7 @@ impl LightClient<Idle> {
     pub fn subscribe(
         mut self,
     ) -> (
-        LightClient<Subscribed>,
+        LightClient<state::Subscribed>,
         LoggingSubscribers,
         UpdateSubscriber,
     ) {
@@ -162,7 +165,7 @@ impl LightClient<Idle> {
     }
 }
 
-impl LightClient<Subscribed> {
+impl LightClient<state::Subscribed> {
     /// Start fetching data for the wallet on a dedicated [`tokio::task`]. This will continually
     /// run until terminated or no peers could be found.
     ///
@@ -170,7 +173,7 @@ impl LightClient<Subscribed> {
     ///
     /// If there is no [`tokio::runtime::Runtime`] to drive execution. Common in synchronous
     /// setups.
-    pub fn start(mut self) -> LightClient<Active> {
+    pub fn start(mut self) -> LightClient<state::Active> {
         let node = core::mem::take(&mut self.node).expect("cannot start twice.");
         tokio::task::spawn(async move { node.run().await });
         LightClient {
@@ -184,7 +187,7 @@ impl LightClient<Subscribed> {
 
     /// Take the underlying node process to run in a custom way. Examples include using a dedicated
     /// [`tokio::runtime::Runtime`] or [`tokio::runtime::Handle`] to drive execution.
-    pub fn managed_start(mut self) -> (LightClient<Active>, Node) {
+    pub fn managed_start(mut self) -> (LightClient<state::Active>, Node) {
         let node = core::mem::take(&mut self.node).expect("cannot start twice.");
         let client = LightClient {
             requester: self.requester,
@@ -197,20 +200,20 @@ impl LightClient<Subscribed> {
     }
 }
 
-impl LightClient<Active> {
+impl LightClient<state::Active> {
     /// The client is active and may now handle requests with a [`Requester`].
     pub fn requester(self) -> Requester {
         self.requester
     }
 }
 
-impl From<LightClient<Active>> for Requester {
-    fn from(value: LightClient<Active>) -> Self {
+impl From<LightClient<state::Active>> for Requester {
+    fn from(value: LightClient<state::Active>) -> Self {
         value.requester
     }
 }
 
-impl AsRef<Requester> for LightClient<Active> {
+impl AsRef<Requester> for LightClient<state::Active> {
     fn as_ref(&self) -> &Requester {
         &self.requester
     }
