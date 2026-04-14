@@ -9,10 +9,10 @@ documentation = "https://docs.rs/bdk-kyoto"
 readme = "README.md"
 keywords = ["bitcoin", "peer-to-peer", "light-client"]
 edition = "2021"
-rust-version = "1.84.0"
+rust-version = "1.85.0"
 
 [dependencies]
-bdk_wallet = { version = "2" }
+bdk_wallet = "3"
 bip157 = { version = "0.4.0" }
 
 [dev-dependencies]
