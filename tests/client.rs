@@ -50,8 +50,7 @@ fn init_node(
     let peer = env.bitcoind.params.p2p_socket.unwrap();
     let ip: IpAddr = (*peer.ip()).into();
     let port = peer.port();
-    let mut peer = TrustedPeer::from_ip(ip);
-    peer.port = Some(port);
+    let peer: TrustedPeer = (ip, Some(port)).into();
     Ok(Builder::new(Network::Regtest)
         .add_peer(peer)
         .data_dir(tempdir)
@@ -296,8 +295,7 @@ async fn two_wallets_can_update() -> anyhow::Result<()> {
     let peer = env.bitcoind.params.p2p_socket.unwrap();
     let ip: IpAddr = (*peer.ip()).into();
     let port = peer.port();
-    let mut peer = TrustedPeer::from_ip(ip);
-    peer.port = Some(port);
+    let peer: TrustedPeer = (ip, Some(port)).into();
     let client = Builder::new(Network::Regtest)
         .add_peer(peer)
         .data_dir(tempdir)

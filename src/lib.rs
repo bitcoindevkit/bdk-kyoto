@@ -360,7 +360,6 @@ impl<W: Wallets> UpdateSubscriber<W> {
                     }
                     return Ok(());
                 }
-                _ => (),
             }
         }
         Err(UpdateError::NodeStopped)
