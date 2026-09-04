@@ -333,7 +333,7 @@ impl<W: Wallets> UpdateSubscriber<W> {
                     tip: _,
                     recent_history: _,
                 }) => {
-                    for hash in core::mem::take(&mut self.queued_blocks) {
+                    while let Some(&hash) = self.queued_blocks.last() {
                         let block = self
                             .requester
                             .get_block(hash)
@@ -347,6 +347,7 @@ impl<W: Wallets> UpdateSubscriber<W> {
                                 builder.apply_block_event(&block);
                             }
                         }
+                        self.queued_blocks.pop();
                     }
                     if let Some(single) = self.single_update_builder.as_mut() {
                         self.spk_cache
@@ -370,10 +371,6 @@ impl UpdateSubscriber<wallets::Single> {
     /// Return the most recent [`Update`] for a wallet once it has synced to the network's tip.
     /// This may take a significant portion of time during wallet recoveries or dormant wallets.
     /// Note that you may call this method in a loop as long as the node is running.
-    ///
-    /// **Warning**
-    ///
-    /// This method is _not_ cancel safe. You cannot use it within a `tokio::select` arm.
     pub async fn update(&mut self) -> Result<Update, UpdateError> {
         self.sync().await?;
         Ok(self.single_update_builder.as_mut().unwrap().finish())
@@ -387,10 +384,6 @@ impl UpdateSubscriber<wallets::Multiple> {
     ///
     /// This may take a significant portion of time during wallet recoveries or dormant wallets.
     /// Note that you may call this method in a loop as long as the node is running.
-    ///
-    /// **Warning**
-    ///
-    /// This method is _not_ cancel safe. You cannot use it within a `tokio::select` arm.
     pub async fn updates(
         &mut self,
     ) -> Result<impl Iterator<Item = (DescriptorId, Update)>, UpdateError> {

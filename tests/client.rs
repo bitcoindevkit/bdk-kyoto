@@ -244,6 +244,83 @@ async fn update_handles_dormant_wallet() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+async fn update_is_cancel_safe() -> anyhow::Result<()> {
+    let env = testenv()?;
+
+    let mut wallet = CreateParams::new(EXTERNAL_DESCRIPTOR, INTERNAL_DESCRIPTOR)
+        .network(Network::Regtest)
+        .create_wallet_no_persist()?;
+    let addr = wallet.peek_address(KeychainKind::External, 0).address;
+
+    let tempdir = tempfile::tempdir()?.path().join("kyoto-data");
+    let client = init_node(&env, &wallet, tempdir)?;
+    let (client, _, mut update_subscriber) = client.subscribe();
+
+    // mine blocks
+    let miner = env
+        .rpc_client()
+        .get_new_address(None, None)?
+        .assume_checked();
+    let _hashes = env.mine_blocks(100, Some(miner.clone()))?;
+    wait_for_height(&env, 101).await?;
+
+    // send tx
+    let amt = Amount::from_btc(0.21)?;
+    let txid = env.send(&addr, amt)?;
+    let hashes = env.mine_blocks(1, Some(miner.clone()))?;
+    let blockhash = hashes[0];
+    wait_for_height(&env, 102).await?;
+
+    let client = client.start();
+    let requester = client.requester();
+
+    // Race `update()` against a very short timeout so the future is repeatedly
+    // dropped mid-flight until an attempt fits inside the deadline.
+    let mut cancellations = 0;
+    let res = loop {
+        match tokio::time::timeout(Duration::from_millis(2), update_subscriber.update()).await {
+            Ok(res) => break res?,
+            Err(_) => {
+                cancellations += 1;
+                if cancellations % 20 == 0 {
+                    let _ = env.mine_blocks(1, Some(miner.clone()))?;
+                }
+            }
+        }
+    };
+    assert!(cancellations > 0);
+
+    let anchor = res
+        .tx_update
+        .anchors
+        .iter()
+        .find(|(_, id)| *id == txid)
+        .map(|(anchor, _)| *anchor)
+        .expect("tx must be anchored");
+    assert_eq!(anchor.block_id.height, 102);
+    assert_eq!(anchor.block_id.hash, blockhash);
+    let update_tip = res.chain.as_ref().unwrap().clone();
+    wallet.apply_update(res).unwrap();
+
+    // Balance reflects the confirmed receive.
+    assert_eq!(wallet.balance().total(), amt);
+
+    // The wallet's chain tip agrees with the update and with bitcoind.
+    let wallet_tip = wallet.local_chain().tip();
+    assert!(wallet_tip.height() >= 102);
+    assert_eq!(wallet_tip.height(), update_tip.height());
+    assert_eq!(wallet_tip.hash(), update_tip.hash());
+    let rpc_hash_at_tip = env
+        .rpc_client()
+        .get_block_hash(wallet_tip.height() as u64)?;
+    assert_eq!(wallet_tip.hash(), rpc_hash_at_tip);
+
+    requester.shutdown()?;
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn two_wallets_can_update() -> anyhow::Result<()> {
     let env = testenv()?;
 
