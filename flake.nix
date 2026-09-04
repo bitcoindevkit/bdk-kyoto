@@ -34,6 +34,7 @@
           shellHook = ''
             export BITCOIND_EXE="${pkgs.bitcoind}/bin/bitcoind"
             export ELECTRS_EXE="${blockstream-electrs}/bin/electrs"
+            export KYOTO_DEBUG_OUTPUT=1
           '';
         };
       });
