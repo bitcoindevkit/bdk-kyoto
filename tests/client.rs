@@ -7,7 +7,7 @@ use std::time::Duration;
 use tokio::time;
 
 use bdk_kyoto::builder::{Builder, BuilderExt};
-use bdk_kyoto::{LightClient, ScanType, TrustedPeer};
+use bdk_kyoto::{LightClient, SyncConfig, TrustedPeer};
 use bdk_testenv::bitcoincore_rpc::RpcApi;
 use bdk_testenv::bitcoind;
 use bdk_testenv::TestEnv;
@@ -52,7 +52,7 @@ fn init_node(
     Ok(Builder::new(Network::Regtest)
         .add_peer(peer)
         .required_peers(1)
-        .build_with_wallet(wallet, ScanType::Sync)?)
+        .build_with_wallet(wallet, SyncConfig::sync_from_last_checkpoint().build())?)
 }
 
 #[tokio::test]
@@ -369,8 +369,8 @@ async fn two_wallets_can_update() -> anyhow::Result<()> {
         .add_peer(peer)
         .required_peers(1)
         .build_with_wallets(vec![
-            (&wallet, ScanType::Sync),
-            (&wallet_two, ScanType::Sync),
+            (&wallet, SyncConfig::sync_from_last_checkpoint().build()),
+            (&wallet_two, SyncConfig::sync_from_last_checkpoint().build()),
         ])?;
     let (client, _, mut update_subscriber) = client.subscribe();
     let client = client.start();
