@@ -11,7 +11,7 @@
 //! use bdk_wallet::Wallet;
 //! use bdk_wallet::bitcoin::Network;
 //! use bdk_kyoto::builder::{Builder, BuilderExt};
-//! use bdk_kyoto::{LightClient, ScanType};
+//! use bdk_kyoto::{LightClient, SyncConfig};
 //!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {
@@ -19,7 +19,8 @@
 //!         .network(Network::Signet)
 //!         .create_wallet_no_persist()?;
 //!
-//!     let client = Builder::new(Network::Signet).build_with_wallet(&wallet, ScanType::Sync)?;
+//!     let sync_config = SyncConfig::sync_from_last_checkpoint().build();
+//!     let client = Builder::new(Network::Signet).build_with_wallet(&wallet, sync_config)?;
 //!     let (client, _, mut update_subscriber) = client.subscribe();
 //!     client.start();
 //!
@@ -64,6 +65,10 @@ pub use bip157::UnboundedReceiver;
 
 #[doc(inline)]
 pub use builder::BuilderExt;
+
+use crate::sync_policy::NewWallet;
+use crate::sync_policy::RecoverFromCheckpoint;
+use crate::sync_policy::SyncFromLastCheckpoint;
 pub mod builder;
 
 /// State of the light client.
@@ -262,13 +267,13 @@ pub struct UpdateSubscriber<W: Wallets> {
 impl<W: Wallets> UpdateSubscriber<W> {
     fn new(
         requester: Requester,
-        scan_type: ScanType,
+        policy: SyncPolicy,
         receiver: UnboundedReceiver<Event>,
         cp: CheckPoint,
         graph: IndexedTxGraph<ConfirmationBlockTime, KeychainTxOutIndex<KeychainKind>>,
     ) -> UpdateSubscriber<wallets::Single> {
         let update_builder = UpdateBuilder::new(cp, graph);
-        let spk_cache = update_builder.peek_scripts_from_scantype(scan_type);
+        let spk_cache = update_builder.peek_scripts_from_policy(policy);
         UpdateSubscriber {
             requester,
             receiver,
@@ -286,7 +291,7 @@ impl<W: Wallets> UpdateSubscriber<W> {
         wallet_iter: impl Iterator<
             Item = (
                 DescriptorId,
-                ScanType,
+                SyncPolicy,
                 CheckPoint,
                 IndexedTxGraph<ConfirmationBlockTime, KeychainTxOutIndex<KeychainKind>>,
             ),
@@ -296,7 +301,7 @@ impl<W: Wallets> UpdateSubscriber<W> {
         let mut spk_cache = HashSet::new();
         for wallet in wallet_iter {
             let update_builder = UpdateBuilder::new(wallet.2, wallet.3);
-            spk_cache.extend(update_builder.peek_scripts_from_scantype(wallet.1));
+            spk_cache.extend(update_builder.peek_scripts_from_policy(wallet.1));
             update_map.insert(wallet.0, update_builder);
         }
         UpdateSubscriber {
@@ -444,12 +449,15 @@ impl UpdateBuilder {
     }
 
     #[inline]
-    fn peek_scripts_from_scantype(&self, scan_type: ScanType) -> HashSet<ScriptBuf> {
-        match scan_type {
-            ScanType::Sync => self.peek_script_to_keychain_lookahead(),
-            ScanType::Recovery {
-                used_script_index,
-                checkpoint: _,
+    fn peek_scripts_from_policy(&self, policy: SyncPolicy) -> HashSet<ScriptBuf> {
+        match policy {
+            SyncPolicy::NewWallet => self.peek_script_to_keychain_lookahead(),
+            SyncPolicy::SyncFromLast { lookahead: None } => {
+                self.peek_script_to_keychain_lookahead()
+            }
+            SyncPolicy::SyncFromLast { lookahead: Some(n) } => self.peek_scripts(n),
+            SyncPolicy::Recovery {
+                used_script_index, ..
             } => self.peek_scripts(used_script_index),
         }
     }
@@ -517,17 +525,129 @@ impl std::fmt::Display for UpdateError {
 
 impl std::error::Error for UpdateError {}
 
-/// How to scan compact block filters on start up.
-#[derive(Debug, Clone, Copy, Default)]
-pub enum ScanType {
-    /// Sync the wallet from the last known wallet checkpoint to the rest of the network.
-    #[default]
-    Sync,
-    /// Recover an old wallet by scanning after the specified height.
+/// How wallet syncing should behave.
+pub mod sync_policy {
+    /// A new wallet.
+    #[derive(Debug, Clone, Copy)]
+    pub struct NewWallet;
+    /// Sync from the last checkpoint.
+    #[derive(Debug, Clone, Copy)]
+    pub struct SyncFromLastCheckpoint;
+    /// Recover an existing wallet.
+    #[derive(Debug, Clone, Copy)]
+    pub struct RecoverFromCheckpoint;
+}
+
+impl sealed::Sealed for sync_policy::NewWallet {}
+impl sealed::Sealed for sync_policy::SyncFromLastCheckpoint {}
+impl sealed::Sealed for sync_policy::RecoverFromCheckpoint {}
+
+/// State of the client.
+pub trait SyncPolicyType: sealed::Sealed {}
+
+impl SyncPolicyType for sync_policy::NewWallet {}
+impl SyncPolicyType for sync_policy::SyncFromLastCheckpoint {}
+impl SyncPolicyType for sync_policy::RecoverFromCheckpoint {}
+
+#[derive(Debug, Clone, Copy)]
+enum SyncPolicy {
+    NewWallet,
     Recovery {
-        /// The amount of scripts used by the wallet that is being recovered.
         used_script_index: u32,
-        /// The height in the block chain to begin searching for transactions.
-        checkpoint: HashCheckpoint,
+        cp: HashCheckpoint,
     },
+    SyncFromLast {
+        lookahead: Option<u32>,
+    },
+}
+
+/// The configuration for a sync with the blockchain.
+#[derive(Debug, Clone, Copy)]
+pub struct SyncConfig<P: SyncPolicyType>(SyncPolicy, core::marker::PhantomData<P>);
+
+/// Build a new [`SyncConfig`].
+pub struct SyncConfigBuilder<P: SyncPolicyType> {
+    policy: SyncPolicy,
+    _marker: core::marker::PhantomData<P>,
+}
+
+impl SyncConfig<SyncFromLastCheckpoint> {
+    /// Sync a wallet that is guaranteed to be new. This implies no scripts
+    /// have been revealed. The light client will sync block headers to the
+    /// currently active chain type, but will **omit** filter downloads.
+    ///
+    /// Subsequent updates after new blocks are mined will include filter checks.
+    pub fn new_wallet_sync() -> SyncConfigBuilder<sync_policy::NewWallet> {
+        SyncConfigBuilder {
+            policy: SyncPolicy::NewWallet,
+            _marker: core::marker::PhantomData,
+        }
+    }
+
+    /// Sync the wallet from the last time it was synced.
+    ///
+    /// **Warning**: for a new wallet this will sync the entire blockchain from genesis!
+    /// If a wallet is new or being recovered, try a different sync configuration.
+    pub fn sync_from_last_checkpoint() -> SyncConfigBuilder<sync_policy::SyncFromLastCheckpoint> {
+        SyncConfigBuilder {
+            policy: SyncPolicy::SyncFromLast { lookahead: None },
+            _marker: core::marker::PhantomData,
+        }
+    }
+
+    /// Recover an existing wallet that does not have local data.
+    ///
+    /// # Arguments
+    ///
+    /// - `cp`: [`HashCheckpoint`]: The point in the blockchain to begin the recovery. This is the
+    ///   expected first use of the wallet.
+    ///
+    ///- `used_script_index`: [`u32`]: The number of scripts that were used by the wallet. This must
+    ///  be known ahead of time, as querying filters requires all potential scripts in the case of a
+    ///  recovery. A conservative estimate for this configuration is 1000, used by Bitcoin Core.
+    ///  Subsequent syncs will query fewer scripts.
+    pub fn wallet_recovery_sync(
+        cp: HashCheckpoint,
+        used_script_index: u32,
+    ) -> SyncConfigBuilder<sync_policy::RecoverFromCheckpoint> {
+        SyncConfigBuilder {
+            policy: SyncPolicy::Recovery {
+                used_script_index,
+                cp,
+            },
+            _marker: core::marker::PhantomData,
+        }
+    }
+}
+
+impl SyncConfigBuilder<NewWallet> {
+    /// Return the completed [`SyncConfig`].
+    pub fn build(self) -> SyncConfig<NewWallet> {
+        SyncConfig(self.policy, core::marker::PhantomData)
+    }
+}
+
+impl SyncConfigBuilder<SyncFromLastCheckpoint> {
+    /// Set the lookahead for this sync. This determines how many
+    /// scripts to check from the last revealed.
+    pub fn lookahead(self, lookahead: u32) -> Self {
+        SyncConfigBuilder {
+            policy: SyncPolicy::SyncFromLast {
+                lookahead: Some(lookahead),
+            },
+            _marker: core::marker::PhantomData,
+        }
+    }
+
+    /// Return the completed [`SyncConfig`].
+    pub fn build(self) -> SyncConfig<SyncFromLastCheckpoint> {
+        SyncConfig(self.policy, core::marker::PhantomData)
+    }
+}
+
+impl SyncConfigBuilder<RecoverFromCheckpoint> {
+    /// Return the completed [`SyncConfig`].
+    pub fn build(self) -> SyncConfig<RecoverFromCheckpoint> {
+        SyncConfig(self.policy, core::marker::PhantomData)
+    }
 }
