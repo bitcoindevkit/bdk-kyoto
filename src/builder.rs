@@ -33,8 +33,6 @@
 //!     let client = Builder::new(Network::Signet)
 //!         // A node may handle multiple connections
 //!         .required_peers(2)
-//!         // Choose where to store node data
-//!         .data_dir(db_path)
 //!         // How long peers have to respond messages
 //!         .response_timeout(Duration::from_secs(2))
 //!         // Added trusted peers to initialize the sync

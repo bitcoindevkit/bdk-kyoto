@@ -3,7 +3,6 @@ use bdk_kyoto::{state::Idle, wallets::Single};
 use bdk_wallet::chain::{DescriptorExt, DescriptorId};
 use std::collections::BTreeMap;
 use std::net::IpAddr;
-use std::path::PathBuf;
 use std::time::Duration;
 use tokio::time;
 
@@ -45,7 +44,6 @@ async fn wait_for_height(env: &TestEnv, height: u32) -> anyhow::Result<()> {
 fn init_node(
     env: &TestEnv,
     wallet: &bdk_wallet::Wallet,
-    tempdir: PathBuf,
 ) -> anyhow::Result<LightClient<Idle, Single>> {
     let peer = env.bitcoind.params.p2p_socket.unwrap();
     let ip: IpAddr = (*peer.ip()).into();
@@ -53,7 +51,6 @@ fn init_node(
     let peer: TrustedPeer = (ip, Some(port)).into();
     Ok(Builder::new(Network::Regtest)
         .add_peer(peer)
-        .data_dir(tempdir)
         .required_peers(1)
         .build_with_wallet(wallet, ScanType::Sync)?)
 }
@@ -75,8 +72,7 @@ async fn update_returns_blockchain_data() -> anyhow::Result<()> {
     let addr = wallet.peek_address(KeychainKind::External, index).address;
 
     // build node/client
-    let tempdir = tempfile::tempdir()?.path().join("kyoto-data");
-    let client = init_node(&env, &wallet, tempdir)?;
+    let client = init_node(&env, &wallet)?;
     let (client, _, mut update_subscriber) = client.subscribe();
 
     // mine blocks
@@ -130,8 +126,7 @@ async fn update_handles_reorg() -> anyhow::Result<()> {
         .create_wallet_no_persist()?;
     let addr = wallet.peek_address(KeychainKind::External, 0).address;
 
-    let tempdir = tempfile::tempdir()?.path().join("kyoto-data");
-    let client = init_node(&env, &wallet, tempdir)?;
+    let client = init_node(&env, &wallet)?;
     let (client, _, mut update_subscriber) = client.subscribe();
 
     // mine blocks
@@ -188,8 +183,7 @@ async fn update_handles_dormant_wallet() -> anyhow::Result<()> {
         .create_wallet_no_persist()?;
     let addr = wallet.peek_address(KeychainKind::External, 0).address;
 
-    let tempdir = tempfile::tempdir()?.path().join("kyoto-data");
-    let client = init_node(&env, &wallet, tempdir.clone())?;
+    let client = init_node(&env, &wallet)?;
     let (client, _, mut update_subscriber) = client.subscribe();
     let client = client.start();
     let requester = client.requester();
@@ -224,7 +218,7 @@ async fn update_handles_dormant_wallet() -> anyhow::Result<()> {
     _ = env.mine_blocks(20, Some(miner))?; // 122
     wait_for_height(&env, 122).await?;
 
-    let client = init_node(&env, &wallet, tempdir)?;
+    let client = init_node(&env, &wallet)?;
     let (client, _, mut update_subscriber) = client.subscribe();
     let client = client.start();
     let requester = client.requester();
@@ -252,8 +246,7 @@ async fn update_is_cancel_safe() -> anyhow::Result<()> {
         .create_wallet_no_persist()?;
     let addr = wallet.peek_address(KeychainKind::External, 0).address;
 
-    let tempdir = tempfile::tempdir()?.path().join("kyoto-data");
-    let client = init_node(&env, &wallet, tempdir)?;
+    let client = init_node(&env, &wallet)?;
     let (client, _, mut update_subscriber) = client.subscribe();
 
     // mine blocks
@@ -329,8 +322,7 @@ async fn two_wallets_can_update() -> anyhow::Result<()> {
         .create_wallet_no_persist()?;
     let addr = wallet.peek_address(KeychainKind::External, 0).address;
 
-    let tempdir = tempfile::tempdir()?.path().join("kyoto-data");
-    let client = init_node(&env, &wallet, tempdir.clone())?;
+    let client = init_node(&env, &wallet)?;
     let (client, _, mut update_subscriber) = client.subscribe();
     let client = client.start();
     let requester = client.requester();
@@ -375,7 +367,6 @@ async fn two_wallets_can_update() -> anyhow::Result<()> {
     let peer: TrustedPeer = (ip, Some(port)).into();
     let client = Builder::new(Network::Regtest)
         .add_peer(peer)
-        .data_dir(tempdir)
         .required_peers(1)
         .build_with_wallets(vec![
             (&wallet, ScanType::Sync),
