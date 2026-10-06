@@ -1,5 +1,5 @@
 use bdk_kyoto::builder::{Builder, BuilderExt};
-use bdk_kyoto::{HashCheckpoint, Info, Receiver, ScanType, UnboundedReceiver, Warning};
+use bdk_kyoto::{HashCheckpoint, Info, Receiver, SyncConfig, UnboundedReceiver, Warning};
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::{KeychainKind, Wallet};
 use tokio::select;
@@ -48,14 +48,13 @@ async fn main() -> anyhow::Result<()> {
         .network(NETWORK)
         .create_wallet_no_persist()?;
 
-    let scan_type = ScanType::Recovery {
-        used_script_index: USER_SCRIPTS_USED,
-        checkpoint: HashCheckpoint::from_genesis(NETWORK),
-    };
+    let sync_config =
+        SyncConfig::wallet_recovery_sync(HashCheckpoint::from_genesis(NETWORK), USER_SCRIPTS_USED)
+            .build();
 
     // The light client builder handles the logic of inserting the SPKs
     let client = Builder::new(NETWORK)
-        .build_with_wallet(&wallet, scan_type)
+        .build_with_wallet(&wallet, sync_config)
         .unwrap();
     let (client, logging, mut update_subscriber) = client.subscribe();
     tokio::task::spawn(

@@ -9,12 +9,11 @@
 //! # const RECEIVE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/0/*)";
 //! # const CHANGE: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/1/*)";
 //! use std::net::{IpAddr, Ipv4Addr};
-//! use std::path::PathBuf;
 //! use std::time::Duration;
 //! use bdk_wallet::Wallet;
 //! use bdk_kyoto::bip157::{Network, TrustedPeer};
 //! use bdk_kyoto::builder::{Builder, BuilderExt};
-//! use bdk_kyoto::{LightClient, ScanType};
+//! use bdk_kyoto::{LightClient, SyncConfig};
 //!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {
@@ -22,13 +21,11 @@
 //!     let peer = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
 //!     let trusted = TrustedPeer::from_ip(peer);
 //!
-//!     let db_path = ".".parse::<PathBuf>()?;
-//!
 //!     let mut wallet = Wallet::create(RECEIVE, CHANGE)
 //!         .network(Network::Signet)
 //!         .create_wallet_no_persist()?;
 //!
-//!     let scan_type = ScanType::Sync;
+//!     let sync_config = SyncConfig::sync_from_last_checkpoint().build();
 //!
 //!     let client = Builder::new(Network::Signet)
 //!         // A node may handle multiple connections
@@ -37,7 +34,7 @@
 //!         .response_timeout(Duration::from_secs(2))
 //!         // Added trusted peers to initialize the sync
 //!         .add_peer(trusted)
-//!         .build_with_wallet(&wallet, scan_type)?;
+//!         .build_with_wallet(&wallet, sync_config)?;
 //!     Ok(())
 //! }
 //! ```
@@ -52,48 +49,57 @@ use bdk_wallet::{
     KeychainKind, Wallet,
 };
 pub use bip157::Builder;
-use bip157::{chain::ChainState, HashCheckpoint};
+use bip157::{chain::ChainState, HashCheckpoint, Network};
 
-use crate::{state::Idle, LightClient, LoggingSubscribers, ScanType, UpdateSubscriber};
+use crate::{
+    state::Idle, sync_policy::SyncFromLastCheckpoint, LightClient, LoggingSubscribers, SyncConfig,
+    SyncPolicy, SyncPolicyType, UpdateSubscriber,
+};
 
 const IMPOSSIBLE_REORG_DEPTH: usize = 7;
 
 /// Build a compact block filter client and node for a specified wallet
 pub trait BuilderExt {
-    /// Attempt to build the node with scripts from a [`Wallet`] and following a [`ScanType`].
-    fn build_with_wallet(
+    /// Attempt to build the node with scripts from a [`Wallet`] and following a [`SyncConfig`].
+    fn build_with_wallet<P: SyncPolicyType>(
         self,
         wallet: &Wallet,
-        scan_type: ScanType,
+        sync_config: SyncConfig<P>,
     ) -> Result<LightClient<Idle, crate::wallets::Single>, BuilderError>;
 
-    /// Attempt to build the node with scripts from multiple [`Wallet`]s and following a [`ScanType`].
+    /// Attempt to build the node with scripts from multiple [`Wallet`]s and following a [`SyncConfig`].
+    ///
+    /// Only [`SyncFromLastCheckpoint`] configs are permitted. New and recovering wallets
+    /// must be synced individually.
     fn build_with_wallets(
         self,
-        wallets: Vec<(&Wallet, ScanType)>,
+        wallets: Vec<(&Wallet, SyncConfig<SyncFromLastCheckpoint>)>,
     ) -> Result<LightClient<Idle, crate::wallets::Multiple>, BuilderError>;
 }
 
 impl BuilderExt for Builder {
-    fn build_with_wallet(
+    fn build_with_wallet<P: SyncPolicyType>(
         mut self,
         wallet: &Wallet,
-        scan_type: ScanType,
+        sync_config: SyncConfig<P>,
     ) -> Result<LightClient<Idle, crate::wallets::Single>, BuilderError> {
         let network = wallet.network();
         if self.network().ne(&network) {
             return Err(BuilderError::NetworkMismatch);
         }
-        match scan_type {
-            ScanType::Sync => {
-                let current_cp = wallet.latest_checkpoint();
-                let sync_start = walk_back_max_reorg(current_cp);
+        match sync_config.0 {
+            SyncPolicy::NewWallet => {
+                self = self
+                    .chain_state(ChainState::Checkpoint(new_wallet_anchor(network)))
+                    .headers_only_sync();
+            }
+            SyncPolicy::SyncFromLast { lookahead: _ } => {
+                let sync_start = walk_back_max_reorg(wallet.latest_checkpoint());
                 self = self.chain_state(ChainState::Checkpoint(sync_start));
             }
-            ScanType::Recovery {
-                used_script_index: _,
-                checkpoint,
-            } => self = self.chain_state(ChainState::Checkpoint(checkpoint)),
+            SyncPolicy::Recovery { cp, .. } => {
+                self = self.chain_state(ChainState::Checkpoint(cp));
+            }
         }
         let (node, client) = self.build();
         let bip157::Client {
@@ -105,7 +111,7 @@ impl BuilderExt for Builder {
         let indexed_graph = IndexedTxGraph::new(wallet.spk_index().clone());
         let update_subscriber = UpdateSubscriber::<crate::wallets::Single>::new(
             requester.clone(),
-            scan_type,
+            sync_config.0,
             event_rx,
             wallet.latest_checkpoint(),
             indexed_graph,
@@ -124,7 +130,7 @@ impl BuilderExt for Builder {
 
     fn build_with_wallets(
         mut self,
-        wallets: Vec<(&Wallet, ScanType)>,
+        wallets: Vec<(&Wallet, SyncConfig<SyncFromLastCheckpoint>)>,
     ) -> Result<LightClient<Idle, crate::wallets::Multiple>, BuilderError> {
         let network = wallets
             .first()
@@ -136,13 +142,7 @@ impl BuilderExt for Builder {
         }
         let cp_min = wallets
             .iter()
-            .map(|(wallet, scan_type)| match scan_type {
-                ScanType::Sync => walk_back_max_reorg(wallet.latest_checkpoint()),
-                ScanType::Recovery {
-                    used_script_index: _,
-                    checkpoint,
-                } => *checkpoint,
-            })
+            .map(|(wallet, _)| walk_back_max_reorg(wallet.latest_checkpoint()))
             .min()
             .ok_or(BuilderError::EmptyIterator)?;
         self = self.chain_state(ChainState::Checkpoint(cp_min));
@@ -155,19 +155,19 @@ impl BuilderExt for Builder {
         } = client;
         let wallet_iter = wallets
             .into_iter()
-            .map(|(wallet, scan_type)| {
+            .map(|(wallet, sync_config)| {
                 (
                     wallet
                         .public_descriptor(KeychainKind::External)
                         .descriptor_id(),
-                    scan_type,
+                    sync_config.0,
                     wallet.latest_checkpoint(),
                     IndexedTxGraph::new(wallet.spk_index().clone()),
                 )
             })
             .collect::<Vec<(
                 DescriptorId,
-                ScanType,
+                SyncPolicy,
                 CheckPoint,
                 IndexedTxGraph<ConfirmationBlockTime, KeychainTxOutIndex<KeychainKind>>,
             )>>();
@@ -186,6 +186,13 @@ impl BuilderExt for Builder {
             node,
         );
         Ok(client)
+    }
+}
+
+fn new_wallet_anchor(network: Network) -> HashCheckpoint {
+    match network {
+        Network::Bitcoin => HashCheckpoint::taproot_activation(),
+        net => HashCheckpoint::from_genesis(net),
     }
 }
 

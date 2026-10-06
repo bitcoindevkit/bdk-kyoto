@@ -1,5 +1,5 @@
 use bdk_kyoto::builder::{Builder, BuilderExt};
-use bdk_kyoto::{Info, Receiver, ScanType, UnboundedReceiver, Warning};
+use bdk_kyoto::{Info, Receiver, SyncConfig, UnboundedReceiver, Warning};
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::chain::DescriptorExt;
 use bdk_wallet::{KeychainKind, Wallet};
@@ -55,7 +55,10 @@ async fn main() -> anyhow::Result<()> {
         .create_wallet_no_persist()?;
 
     // Build a request to sync for each wallet and place them in a vector.
-    let wallet_iter = vec![(&wallet_one, ScanType::Sync), (&wallet_two, ScanType::Sync)];
+    let wallet_iter = vec![
+        (&wallet_one, SyncConfig::sync_from_last_checkpoint().build()),
+        (&wallet_two, SyncConfig::sync_from_last_checkpoint().build()),
+    ];
 
     // Now build a client that will sync both wallets simultaneously
     let client = Builder::new(NETWORK)
