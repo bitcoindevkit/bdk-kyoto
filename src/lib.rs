@@ -272,7 +272,8 @@ impl<W: Wallets> UpdateSubscriber<W> {
         cp: CheckPoint,
         graph: IndexedTxGraph<ConfirmationBlockTime, KeychainTxOutIndex<KeychainKind>>,
     ) -> UpdateSubscriber<wallets::Single> {
-        let update_builder = UpdateBuilder::new(cp, graph);
+        let mut update_builder = UpdateBuilder::new(cp, graph);
+        update_builder.extend_index_to_policy(policy);
         let spk_cache = update_builder.peek_scripts_from_policy(policy);
         UpdateSubscriber {
             requester,
@@ -300,7 +301,8 @@ impl<W: Wallets> UpdateSubscriber<W> {
         let mut update_map = BTreeMap::new();
         let mut spk_cache = HashSet::new();
         for wallet in wallet_iter {
-            let update_builder = UpdateBuilder::new(wallet.2, wallet.3);
+            let mut update_builder = UpdateBuilder::new(wallet.2, wallet.3);
+            update_builder.extend_index_to_policy(wallet.1);
             spk_cache.extend(update_builder.peek_scripts_from_policy(wallet.1));
             update_map.insert(wallet.0, update_builder);
         }
@@ -446,6 +448,26 @@ impl UpdateBuilder {
         let height = block.height;
         let block = &block.block;
         let _ = self.graph.apply_block_relevant(block, height);
+    }
+
+    // Derive the scripts a sync policy checks filters against into the index, when they go
+    // beyond the wallet's lookahead. Otherwise blocks matched by those scripts would be applied
+    // without their transactions. Covers the same range as `peek_scripts`.
+    fn extend_index_to_policy(&mut self, policy: SyncPolicy) {
+        let to_index = match policy {
+            SyncPolicy::SyncFromLast { lookahead: Some(n) } => n,
+            SyncPolicy::Recovery {
+                used_script_index, ..
+            } => used_script_index,
+            SyncPolicy::NewWallet | SyncPolicy::SyncFromLast { lookahead: None } => return,
+        };
+        let index = &mut self.graph.index;
+        for keychain in [KeychainKind::External, KeychainKind::Internal] {
+            let last_revealed = index.last_revealed_index(keychain).unwrap_or(0);
+            if let Some(target) = last_revealed.saturating_add(to_index).checked_sub(1) {
+                let _ = index.lookahead_to_target(keychain, target);
+            }
+        }
     }
 
     #[inline]
