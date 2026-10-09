@@ -273,7 +273,7 @@ impl<W: Wallets> UpdateSubscriber<W> {
         graph: IndexedTxGraph<ConfirmationBlockTime, KeychainTxOutIndex<KeychainKind>>,
     ) -> UpdateSubscriber<wallets::Single> {
         let mut update_builder = UpdateBuilder::new(cp, graph);
-        update_builder.extend_index_to_policy(policy);
+        update_builder.extend_index_for_recovery(policy);
         let spk_cache = update_builder.peek_scripts_from_policy(policy);
         UpdateSubscriber {
             requester,
@@ -302,7 +302,7 @@ impl<W: Wallets> UpdateSubscriber<W> {
         let mut spk_cache = HashSet::new();
         for wallet in wallet_iter {
             let mut update_builder = UpdateBuilder::new(wallet.2, wallet.3);
-            update_builder.extend_index_to_policy(wallet.1);
+            update_builder.extend_index_for_recovery(wallet.1);
             spk_cache.extend(update_builder.peek_scripts_from_policy(wallet.1));
             update_map.insert(wallet.0, update_builder);
         }
@@ -453,7 +453,7 @@ impl UpdateBuilder {
     // Derive the scripts a recovery checks filters against into the index, when they go beyond
     // the wallet's lookahead. Otherwise blocks matched by those scripts would be applied without
     // their transactions. Covers the same range as `peek_scripts`.
-    fn extend_index_to_policy(&mut self, policy: SyncPolicy) {
+    fn extend_index_for_recovery(&mut self, policy: SyncPolicy) {
         let SyncPolicy::Recovery {
             used_script_index: to_index,
             ..
