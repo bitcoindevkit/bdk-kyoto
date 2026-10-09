@@ -97,7 +97,7 @@ impl BuilderExt for Builder {
                 let sync_start = walk_back_max_reorg(wallet.latest_checkpoint());
                 self = self.chain_state(ChainState::Checkpoint(sync_start));
             }
-            SyncPolicy::Recovery { cp, .. } => {
+            SyncPolicy::Recovery { cp } => {
                 self = self.chain_state(ChainState::Checkpoint(cp));
             }
         }
@@ -111,7 +111,6 @@ impl BuilderExt for Builder {
         let indexed_graph = IndexedTxGraph::new(wallet.spk_index().clone());
         let update_subscriber = UpdateSubscriber::<crate::wallets::Single>::new(
             requester.clone(),
-            sync_config.0,
             event_rx,
             wallet.latest_checkpoint(),
             indexed_graph,
@@ -155,19 +154,17 @@ impl BuilderExt for Builder {
         } = client;
         let wallet_iter = wallets
             .into_iter()
-            .map(|(wallet, sync_config)| {
+            .map(|(wallet, _)| {
                 (
                     wallet
                         .public_descriptor(KeychainKind::External)
                         .descriptor_id(),
-                    sync_config.0,
                     wallet.latest_checkpoint(),
                     IndexedTxGraph::new(wallet.spk_index().clone()),
                 )
             })
             .collect::<Vec<(
                 DescriptorId,
-                SyncPolicy,
                 CheckPoint,
                 IndexedTxGraph<ConfirmationBlockTime, KeychainTxOutIndex<KeychainKind>>,
             )>>();

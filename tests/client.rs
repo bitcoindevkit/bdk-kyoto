@@ -454,17 +454,6 @@ async fn assert_finds_payment_to_index<P: SyncPolicyType>(
 }
 
 #[tokio::test]
-async fn recovery_finds_scripts_beyond_wallet_lookahead() -> anyhow::Result<()> {
-    let env = testenv()?;
-    // Index 100 is beyond the wallet's lookahead, but within `used_script_index`.
-    assert_finds_payment_to_index(&env, 25, 100, |env| {
-        let genesis = env.rpc_client().get_block_hash(0)?;
-        Ok(SyncConfig::wallet_recovery_sync(HashCheckpoint::new(0, genesis), 200).build())
-    })
-    .await
-}
-
-#[tokio::test]
 async fn sync_checks_scripts_within_wallet_lookahead() -> anyhow::Result<()> {
     let env = testenv()?;
     // Index 100 is beyond the default lookahead, but within this wallet's.
@@ -472,4 +461,108 @@ async fn sync_checks_scripts_within_wallet_lookahead() -> anyhow::Result<()> {
         Ok(SyncConfig::sync_from_last_checkpoint().build())
     })
     .await
+}
+
+// The amount paid to `index`, distinct per index so a balance shows which payments were found.
+fn amount_for_index(index: u32) -> Amount {
+    Amount::from_sat(1_000_000 + index as u64)
+}
+
+// Send one transaction paying `indices` on the external keychain, with outputs in that order.
+fn send_ordered(env: &TestEnv, wallet: &bdk_wallet::Wallet, indices: &[u32]) -> anyhow::Result<()> {
+    use bdk_testenv::bitcoincore_rpc::jsonrpc::serde_json::{json, Map, Value};
+    let outputs = indices
+        .iter()
+        .map(|&index| {
+            let addr = wallet.peek_address(KeychainKind::External, index).address;
+            let mut output = Map::new();
+            output.insert(addr.to_string(), json!(amount_for_index(index).to_btc()));
+            Value::Object(output)
+        })
+        .collect::<Vec<Value>>();
+    let rpc = env.rpc_client();
+    let raw: String = rpc.call("createrawtransaction", &[json!([]), json!(outputs)])?;
+    // Keep the change after our outputs so their order is preserved.
+    let funded: Value = rpc.call(
+        "fundrawtransaction",
+        &[json!(raw), json!({ "changePosition": indices.len() })],
+    )?;
+    let signed: Value = rpc.call("signrawtransactionwithwallet", &[funded["hex"].clone()])?;
+    let _: Value = rpc.call("sendrawtransaction", &[signed["hex"].clone()])?;
+    Ok(())
+}
+
+// Mine one block per entry of `blocks`, each with one transaction paying those external indices
+// in order, then recover a wallet with `wallet_lookahead` from genesis. Returns the last used
+// indices and balance of the recovered wallet.
+async fn recover_after_payments(
+    wallet_lookahead: u32,
+    blocks: &[&[u32]],
+) -> anyhow::Result<(BTreeMap<KeychainKind, u32>, Amount)> {
+    let env = testenv()?;
+    let miner = env
+        .rpc_client()
+        .get_new_address(None, None)?
+        .assume_checked();
+    let mut wallet = CreateParams::new(EXTERNAL_DESCRIPTOR, INTERNAL_DESCRIPTOR)
+        .network(Network::Regtest)
+        .lookahead(wallet_lookahead)
+        .create_wallet_no_persist()?;
+
+    env.mine_blocks(100, Some(miner.clone()))?;
+    for indices in blocks {
+        send_ordered(&env, &wallet, indices)?;
+        env.mine_blocks(1, Some(miner.clone()))?;
+    }
+    wait_for_height(&env, 101 + blocks.len() as u32).await?;
+
+    let genesis = env.rpc_client().get_block_hash(0)?;
+    let sync_config = SyncConfig::wallet_recovery_sync(HashCheckpoint::new(0, genesis)).build();
+    let client = init_node_with_config(&env, &wallet, sync_config)?;
+    let (client, _, mut update_subscriber) = client.subscribe();
+    let client = client.start();
+
+    let update = update_subscriber.update().await?;
+    let last_active_indices = update.last_active_indices.clone();
+    wallet.apply_update(update)?;
+
+    client.requester().shutdown()?;
+    Ok((last_active_indices, wallet.balance().total()))
+}
+
+#[tokio::test]
+async fn recovery_follows_payments_beyond_wallet_lookahead() -> anyhow::Result<()> {
+    // Each index is only within the lookahead once the block before it has been applied.
+    let (last_active, balance) = recover_after_payments(25, &[&[20], &[40], &[60]]).await?;
+    assert_eq!(last_active, [(KeychainKind::External, 60)].into());
+    assert_eq!(
+        balance,
+        amount_for_index(20) + amount_for_index(40) + amount_for_index(60)
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn recovery_finds_payments_revealed_later_in_same_block() -> anyhow::Result<()> {
+    // Index 40 comes first in the transaction, but is only within the lookahead once the output
+    // to index 20 is found.
+    let (last_active, balance) = recover_after_payments(25, &[&[40, 20]]).await?;
+    assert_eq!(last_active, [(KeychainKind::External, 40)].into());
+    assert_eq!(balance, amount_for_index(20) + amount_for_index(40));
+    Ok(())
+}
+
+#[tokio::test]
+async fn recovery_gap_limit_is_the_wallet_lookahead() -> anyhow::Result<()> {
+    // Index 30 is paid before index 10 reveals it, so it is beyond the lookahead when its block
+    // is checked, and that block is never downloaded.
+    let (last_active, balance) = recover_after_payments(25, &[&[30], &[10]]).await?;
+    assert_eq!(last_active, [(KeychainKind::External, 10)].into());
+    assert_eq!(balance, amount_for_index(10));
+
+    // A larger lookahead covers it.
+    let (last_active, balance) = recover_after_payments(50, &[&[30], &[10]]).await?;
+    assert_eq!(last_active, [(KeychainKind::External, 30)].into());
+    assert_eq!(balance, amount_for_index(10) + amount_for_index(30));
+    Ok(())
 }
