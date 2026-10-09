@@ -1,5 +1,5 @@
 // #![allow(unused)]
-use bdk_kyoto::{state::Idle, wallets::Single};
+use bdk_kyoto::{state::Idle, wallets::Single, SyncPolicyType};
 use bdk_wallet::chain::{DescriptorExt, DescriptorId};
 use std::collections::BTreeMap;
 use std::net::IpAddr;
@@ -7,7 +7,7 @@ use std::time::Duration;
 use tokio::time;
 
 use bdk_kyoto::builder::{Builder, BuilderExt};
-use bdk_kyoto::{LightClient, SyncConfig, TrustedPeer};
+use bdk_kyoto::{HashCheckpoint, LightClient, SyncConfig, TrustedPeer};
 use bdk_testenv::bitcoincore_rpc::RpcApi;
 use bdk_testenv::bitcoind;
 use bdk_testenv::TestEnv;
@@ -397,4 +397,77 @@ async fn two_wallets_can_update() -> anyhow::Result<()> {
     requester.shutdown()?;
 
     Ok(())
+}
+
+fn init_node_with_config<P: SyncPolicyType>(
+    env: &TestEnv,
+    wallet: &bdk_wallet::Wallet,
+    sync_config: SyncConfig<P>,
+) -> anyhow::Result<LightClient<Idle, Single>> {
+    let peer = env.bitcoind.params.p2p_socket.unwrap();
+    let ip: IpAddr = (*peer.ip()).into();
+    let peer: TrustedPeer = (ip, Some(peer.port())).into();
+    Ok(Builder::new(Network::Regtest)
+        .add_peer(peer)
+        .required_peers(1)
+        .build_with_wallet(wallet, sync_config)?)
+}
+
+// Pay `index` on the external keychain, sync with `sync_config` and check the payment is found.
+async fn assert_finds_payment_to_index<P: SyncPolicyType>(
+    env: &TestEnv,
+    index: u32,
+    sync_config: impl FnOnce(&TestEnv) -> anyhow::Result<SyncConfig<P>>,
+) -> anyhow::Result<()> {
+    let miner = env
+        .rpc_client()
+        .get_new_address(None, None)?
+        .assume_checked();
+    let mut wallet = CreateParams::new(EXTERNAL_DESCRIPTOR, INTERNAL_DESCRIPTOR)
+        .network(Network::Regtest)
+        .create_wallet_no_persist()?;
+    assert!(index > wallet.spk_index().lookahead());
+
+    env.mine_blocks(100, Some(miner.clone()))?;
+    let addr = wallet.peek_address(KeychainKind::External, index).address;
+    let amt = Amount::from_btc(0.21)?;
+    env.send(&addr, amt)?;
+    env.mine_blocks(1, Some(miner))?;
+    wait_for_height(env, 102).await?;
+
+    let client = init_node_with_config(env, &wallet, sync_config(env)?)?;
+    let (client, _, mut update_subscriber) = client.subscribe();
+    let client = client.start();
+
+    let update = update_subscriber.update().await?;
+    assert_eq!(
+        update.last_active_indices,
+        [(KeychainKind::External, index)].into()
+    );
+    wallet.apply_update(update)?;
+    assert_eq!(wallet.balance().total(), amt);
+
+    client.requester().shutdown()?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn recovery_finds_scripts_beyond_wallet_lookahead() -> anyhow::Result<()> {
+    let env = testenv()?;
+    assert_finds_payment_to_index(&env, 100, |env| {
+        let genesis = env.rpc_client().get_block_hash(0)?;
+        Ok(SyncConfig::wallet_recovery_sync(HashCheckpoint::new(0, genesis), 200).build())
+    })
+    .await
+}
+
+#[tokio::test]
+async fn sync_lookahead_finds_scripts_beyond_wallet_lookahead() -> anyhow::Result<()> {
+    let env = testenv()?;
+    assert_finds_payment_to_index(&env, 100, |_| {
+        Ok(SyncConfig::sync_from_last_checkpoint()
+            .lookahead(200)
+            .build())
+    })
+    .await
 }
