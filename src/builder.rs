@@ -93,7 +93,7 @@ impl BuilderExt for Builder {
                     .chain_state(ChainState::Checkpoint(new_wallet_anchor(network)))
                     .headers_only_sync();
             }
-            SyncPolicy::SyncFromLast { lookahead: _ } => {
+            SyncPolicy::SyncFromLast => {
                 let sync_start = walk_back_max_reorg(wallet.latest_checkpoint());
                 self = self.chain_state(ChainState::Checkpoint(sync_start));
             }

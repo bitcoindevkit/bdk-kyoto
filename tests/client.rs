@@ -413,9 +413,11 @@ fn init_node_with_config<P: SyncPolicyType>(
         .build_with_wallet(wallet, sync_config)?)
 }
 
-// Pay `index` on the external keychain, sync with `sync_config` and check the payment is found.
+// Pay `index` on the external keychain of a wallet with `wallet_lookahead`, sync with
+// `sync_config` and check the payment is found.
 async fn assert_finds_payment_to_index<P: SyncPolicyType>(
     env: &TestEnv,
+    wallet_lookahead: u32,
     index: u32,
     sync_config: impl FnOnce(&TestEnv) -> anyhow::Result<SyncConfig<P>>,
 ) -> anyhow::Result<()> {
@@ -425,8 +427,8 @@ async fn assert_finds_payment_to_index<P: SyncPolicyType>(
         .assume_checked();
     let mut wallet = CreateParams::new(EXTERNAL_DESCRIPTOR, INTERNAL_DESCRIPTOR)
         .network(Network::Regtest)
+        .lookahead(wallet_lookahead)
         .create_wallet_no_persist()?;
-    assert!(index > wallet.spk_index().lookahead());
 
     env.mine_blocks(100, Some(miner.clone()))?;
     let addr = wallet.peek_address(KeychainKind::External, index).address;
@@ -454,7 +456,8 @@ async fn assert_finds_payment_to_index<P: SyncPolicyType>(
 #[tokio::test]
 async fn recovery_finds_scripts_beyond_wallet_lookahead() -> anyhow::Result<()> {
     let env = testenv()?;
-    assert_finds_payment_to_index(&env, 100, |env| {
+    // Index 100 is beyond the wallet's lookahead, but within `used_script_index`.
+    assert_finds_payment_to_index(&env, 25, 100, |env| {
         let genesis = env.rpc_client().get_block_hash(0)?;
         Ok(SyncConfig::wallet_recovery_sync(HashCheckpoint::new(0, genesis), 200).build())
     })
@@ -462,12 +465,11 @@ async fn recovery_finds_scripts_beyond_wallet_lookahead() -> anyhow::Result<()> 
 }
 
 #[tokio::test]
-async fn sync_lookahead_finds_scripts_beyond_wallet_lookahead() -> anyhow::Result<()> {
+async fn sync_checks_scripts_within_wallet_lookahead() -> anyhow::Result<()> {
     let env = testenv()?;
-    assert_finds_payment_to_index(&env, 100, |_| {
-        Ok(SyncConfig::sync_from_last_checkpoint()
-            .lookahead(200)
-            .build())
+    // Index 100 is beyond the default lookahead, but within this wallet's.
+    assert_finds_payment_to_index(&env, 200, 100, |_| {
+        Ok(SyncConfig::sync_from_last_checkpoint().build())
     })
     .await
 }
