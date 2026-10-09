@@ -7,7 +7,6 @@ use tokio::select;
 const RECV: &str = "wpkh([9122d9e0/84'/1'/0']tpubDCYVtmaSaDzTxcgvoP5AHZNbZKZzrvoNH9KARep88vESc6MxRqAp4LmePc2eeGX6XUxBcdhAmkthWTDqygPz2wLAyHWisD299Lkdrj5egY6/0/*)";
 const CHANGE: &str = "wpkh([9122d9e0/84'/1'/0']tpubDCYVtmaSaDzTxcgvoP5AHZNbZKZzrvoNH9KARep88vESc6MxRqAp4LmePc2eeGX6XUxBcdhAmkthWTDqygPz2wLAyHWisD299Lkdrj5egY6/1/*)";
 const NETWORK: Network = Network::Signet;
-const USER_SCRIPTS_USED: u32 = 1_000;
 
 /* Sync a bdk wallet */
 
@@ -49,8 +48,7 @@ async fn main() -> anyhow::Result<()> {
         .create_wallet_no_persist()?;
 
     let sync_config =
-        SyncConfig::wallet_recovery_sync(HashCheckpoint::from_genesis(NETWORK), USER_SCRIPTS_USED)
-            .build();
+        SyncConfig::wallet_recovery_sync(HashCheckpoint::from_genesis(NETWORK)).build();
 
     // The light client builder handles the logic of inserting the SPKs
     let client = Builder::new(NETWORK)
