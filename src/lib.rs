@@ -273,7 +273,7 @@ impl<W: Wallets> UpdateSubscriber<W> {
         graph: IndexedTxGraph<ConfirmationBlockTime, KeychainTxOutIndex<KeychainKind>>,
     ) -> UpdateSubscriber<wallets::Single> {
         let mut update_builder = UpdateBuilder::new(cp, graph);
-        update_builder.extend_index_to_policy(policy);
+        update_builder.extend_index_for_recovery(policy);
         let spk_cache = update_builder.peek_scripts_from_policy(policy);
         UpdateSubscriber {
             requester,
@@ -302,7 +302,7 @@ impl<W: Wallets> UpdateSubscriber<W> {
         let mut spk_cache = HashSet::new();
         for wallet in wallet_iter {
             let mut update_builder = UpdateBuilder::new(wallet.2, wallet.3);
-            update_builder.extend_index_to_policy(wallet.1);
+            update_builder.extend_index_for_recovery(wallet.1);
             spk_cache.extend(update_builder.peek_scripts_from_policy(wallet.1));
             update_map.insert(wallet.0, update_builder);
         }
@@ -450,16 +450,16 @@ impl UpdateBuilder {
         let _ = self.graph.apply_block_relevant(block, height);
     }
 
-    // Derive the scripts a sync policy checks filters against into the index, when they go
-    // beyond the wallet's lookahead. Otherwise blocks matched by those scripts would be applied
-    // without their transactions. Covers the same range as `peek_scripts`.
-    fn extend_index_to_policy(&mut self, policy: SyncPolicy) {
-        let to_index = match policy {
-            SyncPolicy::SyncFromLast { lookahead: Some(n) } => n,
-            SyncPolicy::Recovery {
-                used_script_index, ..
-            } => used_script_index,
-            SyncPolicy::NewWallet | SyncPolicy::SyncFromLast { lookahead: None } => return,
+    // Derive the scripts a recovery checks filters against into the index, when they go beyond
+    // the wallet's lookahead. Otherwise blocks matched by those scripts would be applied without
+    // their transactions. Covers the same range as `peek_scripts`.
+    fn extend_index_for_recovery(&mut self, policy: SyncPolicy) {
+        let SyncPolicy::Recovery {
+            used_script_index: to_index,
+            ..
+        } = policy
+        else {
+            return;
         };
         let index = &mut self.graph.index;
         for keychain in [KeychainKind::External, KeychainKind::Internal] {
@@ -473,11 +473,9 @@ impl UpdateBuilder {
     #[inline]
     fn peek_scripts_from_policy(&self, policy: SyncPolicy) -> HashSet<ScriptBuf> {
         match policy {
-            SyncPolicy::NewWallet => self.peek_script_to_keychain_lookahead(),
-            SyncPolicy::SyncFromLast { lookahead: None } => {
+            SyncPolicy::NewWallet | SyncPolicy::SyncFromLast => {
                 self.peek_script_to_keychain_lookahead()
             }
-            SyncPolicy::SyncFromLast { lookahead: Some(n) } => self.peek_scripts(n),
             SyncPolicy::Recovery {
                 used_script_index, ..
             } => self.peek_scripts(used_script_index),
@@ -578,9 +576,7 @@ enum SyncPolicy {
         used_script_index: u32,
         cp: HashCheckpoint,
     },
-    SyncFromLast {
-        lookahead: Option<u32>,
-    },
+    SyncFromLast,
 }
 
 /// The configuration for a sync with the blockchain.
@@ -608,11 +604,15 @@ impl SyncConfig<SyncFromLastCheckpoint> {
 
     /// Sync the wallet from the last time it was synced.
     ///
+    /// Filters are checked against the wallet's revealed scripts plus its lookahead. To check
+    /// more scripts (for instance for a wallet that has not been synced in a while), load the
+    /// wallet with a larger lookahead.
+    ///
     /// **Warning**: for a new wallet this will sync the entire blockchain from genesis!
     /// If a wallet is new or being recovered, try a different sync configuration.
     pub fn sync_from_last_checkpoint() -> SyncConfigBuilder<sync_policy::SyncFromLastCheckpoint> {
         SyncConfigBuilder {
-            policy: SyncPolicy::SyncFromLast { lookahead: None },
+            policy: SyncPolicy::SyncFromLast,
             _marker: core::marker::PhantomData,
         }
     }
@@ -650,17 +650,6 @@ impl SyncConfigBuilder<NewWallet> {
 }
 
 impl SyncConfigBuilder<SyncFromLastCheckpoint> {
-    /// Set the lookahead for this sync. This determines how many
-    /// scripts to check from the last revealed.
-    pub fn lookahead(self, lookahead: u32) -> Self {
-        SyncConfigBuilder {
-            policy: SyncPolicy::SyncFromLast {
-                lookahead: Some(lookahead),
-            },
-            _marker: core::marker::PhantomData,
-        }
-    }
-
     /// Return the completed [`SyncConfig`].
     pub fn build(self) -> SyncConfig<SyncFromLastCheckpoint> {
         SyncConfig(self.policy, core::marker::PhantomData)
