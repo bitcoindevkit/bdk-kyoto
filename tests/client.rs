@@ -11,15 +11,19 @@ use bdk_kyoto::{HashCheckpoint, LightClient, SyncConfig, TrustedPeer};
 use bdk_testenv::bitcoincore_rpc::RpcApi;
 use bdk_testenv::bitcoind;
 use bdk_testenv::TestEnv;
-use bdk_wallet::bitcoin::{Amount, Network};
+use bdk_wallet::bitcoin::bip32::Xpriv;
+use bdk_wallet::bitcoin::{Amount, FeeRate, Network};
 use bdk_wallet::CreateParams;
 use bdk_wallet::KeychainKind;
+use bdk_wallet::SignOptions;
 use bdk_wallet::Update;
 
 const EXTERNAL_DESCRIPTOR: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/0/*)";
 const INTERNAL_DESCRIPTOR: &str = "tr([7d94197e/86'/1'/0']tpubDCyQVJj8KzjiQsFjmb3KwECVXPvMwvAxxZGCP9XmWSopmjW3bCV3wD7TgxrUhiGSueDS1MU5X1Vb1YjYcp8jitXc5fXfdC1z68hDDEyKRNr/1/*)";
 const RECV_TWO: &str = "wpkh([9122d9e0/84'/1'/0']tpubDCYVtmaSaDzTxcgvoP5AHZNbZKZzrvoNH9KARep88vESc6MxRqAp4LmePc2eeGX6XUxBcdhAmkthWTDqygPz2wLAyHWisD299Lkdrj5egY6/0/*)";
 const CHANGE_TWO: &str = "wpkh([9122d9e0/84'/1'/0']tpubDCYVtmaSaDzTxcgvoP5AHZNbZKZzrvoNH9KARep88vESc6MxRqAp4LmePc2eeGX6XUxBcdhAmkthWTDqygPz2wLAyHWisD299Lkdrj5egY6/1/*)";
+// A key to sign a spend with: the BIP84 test vectors' (abandon x11 about).
+const SPENDER_KEY: &str = "tprv8ZgxMBicQKsPe5YMU9gHen4Ez3ApihUfykaqUorj9t6FDqy3nP6eoXiAo2ssvpAjoLroQxHqr3R5nE3a5dU3DHTjTgJDd7zrbniJr6nrCzd";
 
 fn testenv() -> anyhow::Result<TestEnv> {
     use bdk_testenv::Config;
@@ -310,6 +314,65 @@ async fn update_is_cancel_safe() -> anyhow::Result<()> {
 
     requester.shutdown()?;
 
+    Ok(())
+}
+
+// A spend is the wallet's only once the output it spends is, so when one sync matches the block
+// paying the wallet and the block spending that payment, the paying block must be applied first.
+#[tokio::test]
+async fn update_applies_a_payment_before_its_spend() -> anyhow::Result<()> {
+    let env = testenv()?;
+    let miner = env
+        .rpc_client()
+        .get_new_address(None, None)?
+        .assume_checked();
+    env.mine_blocks(100, Some(miner.clone()))?;
+    wait_for_height(&env, 101).await?;
+
+    // The payment, mined at 102.
+    let key: Xpriv = SPENDER_KEY.parse()?;
+    let descriptors = [0, 1].map(|branch| format!("wpkh({key}/84'/1'/0'/{branch}/*)"));
+    let mut spender = CreateParams::new(descriptors[0].clone(), descriptors[1].clone())
+        .network(Network::Regtest)
+        .create_wallet_no_persist()?;
+    let addr = spender.reveal_next_address(KeychainKind::External).address;
+    let amt = Amount::from_btc(0.21)?;
+    let paid = env.send(&addr, amt)?;
+    let payment = env.rpc_client().get_raw_transaction(&paid, None)?;
+    env.mine_blocks(1, Some(miner.clone()))?;
+    wait_for_height(&env, 102).await?;
+
+    // Its spend, mined at 103: everything back to the miner, no change.
+    spender.apply_unconfirmed_txs([(payment, 0)]);
+    let mut builder = spender.build_tx();
+    builder
+        .drain_wallet()
+        .drain_to(miner.script_pubkey())
+        .fee_rate(FeeRate::BROADCAST_MIN);
+    let mut psbt = builder.finish()?;
+    psbt.sign(&key, spender.secp_ctx())
+        .map_err(|(_, e)| anyhow::anyhow!("signing: {e:?}"))?;
+    assert!(spender.finalize_psbt(&mut psbt, SignOptions::default())?);
+    let spend = psbt.extract_tx()?;
+    env.rpc_client().send_raw_transaction(&spend)?;
+    env.mine_blocks(1, Some(miner))?;
+    wait_for_height(&env, 103).await?;
+
+    // A fresh wallet on the same keys finds both in one sync.
+    let [external, internal] = descriptors;
+    let mut wallet = CreateParams::new(external, internal)
+        .network(Network::Regtest)
+        .create_wallet_no_persist()?;
+    let client = init_node(&env, &wallet)?;
+    let (client, _, mut update_subscriber) = client.subscribe();
+    let client = client.start();
+    let update = update_subscriber.update().await?;
+    wallet.apply_update(update)?;
+    assert!(wallet.get_tx(paid).is_some(), "the payment");
+    assert!(wallet.get_tx(spend.compute_txid()).is_some(), "the spend");
+    assert_eq!(wallet.balance().total(), Amount::ZERO);
+
+    client.requester().shutdown()?;
     Ok(())
 }
 
