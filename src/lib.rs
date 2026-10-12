@@ -340,7 +340,9 @@ impl<W: Wallets> UpdateSubscriber<W> {
                     tip: _,
                     recent_history: _,
                 }) => {
-                    while let Some(&hash) = self.queued_blocks.last() {
+                    // Oldest first: a spend is relevant only once the output it spends is
+                    // indexed, so a block applied before the one that funds it loses the spend.
+                    while let Some(&hash) = self.queued_blocks.first() {
                         let block = self
                             .requester
                             .get_block(hash)
@@ -354,7 +356,7 @@ impl<W: Wallets> UpdateSubscriber<W> {
                                 builder.apply_block_event(&block);
                             }
                         }
-                        self.queued_blocks.pop();
+                        self.queued_blocks.remove(0);
                     }
                     if let Some(single) = self.single_update_builder.as_mut() {
                         self.spk_cache
