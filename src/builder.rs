@@ -52,8 +52,8 @@ pub use bip157::Builder;
 use bip157::{chain::ChainState, HashCheckpoint, Network};
 
 use crate::{
-    state::Idle, sync_policy::SyncFromLastCheckpoint, LightClient, LoggingSubscribers, SyncConfig,
-    SyncPolicy, SyncPolicyType, UpdateSubscriber,
+    state::Idle, LightClient, LoggingSubscribers, SyncConfig, SyncPolicy, SyncPolicyType,
+    UpdateSubscriber,
 };
 
 const IMPOSSIBLE_REORG_DEPTH: usize = 7;
@@ -67,13 +67,13 @@ pub trait BuilderExt {
         sync_config: SyncConfig<P>,
     ) -> Result<LightClient<Idle, crate::wallets::Single>, BuilderError>;
 
-    /// Attempt to build the node with scripts from multiple [`Wallet`]s and following a [`SyncConfig`].
+    /// Attempt to build the node with scripts from multiple [`Wallet`]s.
     ///
-    /// Only [`SyncFromLastCheckpoint`] configs are permitted. New and recovering wallets
-    /// must be synced individually.
+    /// Each wallet is synced from its last checkpoint. New and recovering wallets must be
+    /// synced individually.
     fn build_with_wallets(
         self,
-        wallets: Vec<(&Wallet, SyncConfig<SyncFromLastCheckpoint>)>,
+        wallets: Vec<&Wallet>,
     ) -> Result<LightClient<Idle, crate::wallets::Multiple>, BuilderError>;
 }
 
@@ -129,19 +129,18 @@ impl BuilderExt for Builder {
 
     fn build_with_wallets(
         mut self,
-        wallets: Vec<(&Wallet, SyncConfig<SyncFromLastCheckpoint>)>,
+        wallets: Vec<&Wallet>,
     ) -> Result<LightClient<Idle, crate::wallets::Multiple>, BuilderError> {
         let network = wallets
             .first()
             .ok_or(BuilderError::EmptyIterator)?
-            .0
             .network();
         if self.network().ne(&network) {
             return Err(BuilderError::NetworkMismatch);
         }
         let cp_min = wallets
             .iter()
-            .map(|(wallet, _)| walk_back_max_reorg(wallet.latest_checkpoint()))
+            .map(|wallet| walk_back_max_reorg(wallet.latest_checkpoint()))
             .min()
             .ok_or(BuilderError::EmptyIterator)?;
         self = self.chain_state(ChainState::Checkpoint(cp_min));
@@ -154,7 +153,7 @@ impl BuilderExt for Builder {
         } = client;
         let wallet_iter = wallets
             .into_iter()
-            .map(|(wallet, _)| {
+            .map(|wallet| {
                 (
                     wallet
                         .public_descriptor(KeychainKind::External)

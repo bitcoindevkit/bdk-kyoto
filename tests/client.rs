@@ -368,10 +368,7 @@ async fn two_wallets_can_update() -> anyhow::Result<()> {
     let client = Builder::new(Network::Regtest)
         .add_peer(peer)
         .required_peers(1)
-        .build_with_wallets(vec![
-            (&wallet, SyncConfig::sync_from_last_checkpoint().build()),
-            (&wallet_two, SyncConfig::sync_from_last_checkpoint().build()),
-        ])?;
+        .build_with_wallets(vec![&wallet, &wallet_two])?;
     let (client, _, mut update_subscriber) = client.subscribe();
     let client = client.start();
     let requester = client.requester();
