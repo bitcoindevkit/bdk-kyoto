@@ -103,7 +103,7 @@ pub struct LoggingSubscribers {
     /// Receive informational messages as the node runs.
     pub info_subscriber: Receiver<Info>,
     /// Receive warnings from the node as it runs.
-    pub warning_subscriber: UnboundedReceiver<Warning>,
+    pub warning_subscriber: Receiver<Warning>,
 }
 
 /// A client and associated structs to send and receive events to and from a node process.
