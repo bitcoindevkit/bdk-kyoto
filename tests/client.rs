@@ -368,10 +368,10 @@ async fn two_wallets_can_update() -> anyhow::Result<()> {
     let client = Builder::new(Network::Regtest)
         .add_peer(peer)
         .required_peers(1)
-        .build_with_wallets(vec![
-            (&wallet, SyncConfig::sync_from_last_checkpoint().build()),
-            (&wallet_two, SyncConfig::sync_from_last_checkpoint().build()),
-        ])?;
+        .wallets()
+        .add(&wallet, SyncConfig::sync_from_last_checkpoint().build())
+        .add(&wallet_two, SyncConfig::new_wallet_sync().build())
+        .build()?;
     let (client, _, mut update_subscriber) = client.subscribe();
     let client = client.start();
     let requester = client.requester();
@@ -395,6 +395,106 @@ async fn two_wallets_can_update() -> anyhow::Result<()> {
     wallet.apply_update(res).unwrap();
 
     requester.shutdown()?;
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn new_wallet_does_not_move_sync_start() -> anyhow::Result<()> {
+    let env = testenv()?;
+
+    let mut wallet = CreateParams::new(EXTERNAL_DESCRIPTOR, INTERNAL_DESCRIPTOR)
+        .network(Network::Regtest)
+        .create_wallet_no_persist()?;
+    let client = init_node(&env, &wallet)?;
+    let (client, _, mut update_subscriber) = client.subscribe();
+    let client = client.start();
+    let requester = client.requester();
+
+    let miner = env
+        .rpc_client()
+        .get_new_address(None, None)?
+        .assume_checked();
+    env.mine_blocks(100, Some(miner.clone()))?;
+    wait_for_height(&env, 101).await?;
+    let res = update_subscriber.update().await?;
+    wallet.apply_update(res)?;
+    requester.shutdown()?;
+
+    let mut wallet_two = CreateParams::new(RECV_TWO, CHANGE_TWO)
+        .network(Network::Regtest)
+        .create_wallet_no_persist()?;
+    let addr = wallet_two.peek_address(KeychainKind::External, 0).address;
+    let amt = Amount::from_btc(0.21)?;
+    env.send(&addr, amt)?;
+    env.mine_blocks(1, Some(miner))?;
+    wait_for_height(&env, 102).await?;
+
+    let peer = env.bitcoind.params.p2p_socket.unwrap();
+    let ip: IpAddr = (*peer.ip()).into();
+    let peer: TrustedPeer = (ip, Some(peer.port())).into();
+    let client = Builder::new(Network::Regtest)
+        .add_peer(peer)
+        .required_peers(1)
+        .wallets()
+        .add(&wallet, SyncConfig::sync_from_last_checkpoint().build())
+        .add(&wallet_two, SyncConfig::new_wallet_sync().build())
+        .build()?;
+    let (client, _, mut update_subscriber) = client.subscribe();
+    let client = client.start();
+    let requester = client.requester();
+
+    let mut updates = update_subscriber
+        .updates()
+        .await?
+        .collect::<BTreeMap<DescriptorId, Update>>();
+    let res = updates
+        .remove(
+            &wallet_two
+                .public_descriptor(KeychainKind::External)
+                .descriptor_id(),
+        )
+        .unwrap();
+    let synced_from = res
+        .chain
+        .as_ref()
+        .unwrap()
+        .iter()
+        .map(|cp| cp.height())
+        .filter(|&height| height > 0)
+        .min()
+        .unwrap();
+    assert!(synced_from > 90);
+    wallet_two.apply_update(res)?;
+    assert_eq!(wallet_two.balance().total(), amt);
+
+    requester.shutdown()?;
+
+    Ok(())
+}
+
+#[test]
+fn wallets_builder_rejects_invalid_wallets() -> anyhow::Result<()> {
+    use bdk_kyoto::builder::BuilderError;
+    let wallet = CreateParams::new(EXTERNAL_DESCRIPTOR, INTERNAL_DESCRIPTOR)
+        .network(Network::Regtest)
+        .create_wallet_no_persist()?;
+
+    let res = Builder::new(Network::Regtest).wallets().build();
+    assert!(matches!(res, Err(BuilderError::EmptyIterator)));
+
+    let res = Builder::new(Network::Signet)
+        .wallets()
+        .add(&wallet, SyncConfig::sync_from_last_checkpoint().build())
+        .build();
+    assert!(matches!(res, Err(BuilderError::NetworkMismatch)));
+
+    let res = Builder::new(Network::Regtest)
+        .wallets()
+        .add(&wallet, SyncConfig::sync_from_last_checkpoint().build())
+        .add(&wallet, SyncConfig::new_wallet_sync().build())
+        .build();
+    assert!(matches!(res, Err(BuilderError::DuplicateWallet)));
 
     Ok(())
 }
