@@ -51,15 +51,12 @@ async fn main() -> anyhow::Result<()> {
         .network(NETWORK)
         .create_wallet_no_persist()?;
 
-    // Build a request to sync for each wallet and place them in a vector.
-    let wallet_iter = vec![
-        (&wallet_one, SyncConfig::sync_from_last_checkpoint().build()),
-        (&wallet_two, SyncConfig::sync_from_last_checkpoint().build()),
-    ];
-
     // Now build a client that will sync both wallets simultaneously
     let client = Builder::new(NETWORK)
-        .build_with_wallets(wallet_iter)
+        .wallets()
+        .add(&wallet_one, SyncConfig::sync_from_last_checkpoint().build())
+        .add(&wallet_two, SyncConfig::new_wallet_sync().build())
+        .build()
         .unwrap();
     let (client, logging, mut update_subscriber) = client.subscribe();
     tokio::task::spawn(
