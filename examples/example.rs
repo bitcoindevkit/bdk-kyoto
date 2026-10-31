@@ -10,25 +10,36 @@ const NETWORK: Network = Network::Signet;
 
 /* Sync a bdk wallet */
 
-async fn traces(mut info_subscriber: Receiver<Info>, mut warning_subscriber: Receiver<Warning>) {
+async fn traces(
+    start_height: u32,
+    mut info_subscriber: Receiver<Info>,
+    mut warning_subscriber: Receiver<Warning>,
+) {
+    let mut chain_height = start_height;
     loop {
         select! {
             info = info_subscriber.recv() => {
-                if let Some(info) = info {
-                    match info {
-                        Info::NewChainHeight(height) => {
-                            tracing::info!("chain height: {height}");
-                        },
-                        Info::BlockReceived(b) => {
-                            tracing::info!("downloaded block: {b}");
-                        },
-                        _ => (),
+                match info {
+                    Some(Info::NewChainHeight(height)) => {
+                        chain_height = height;
+                        tracing::info!("Header height: {height}");
                     }
+                    Some(Info::CFHeadersAdded(height)) => {
+                        let percent = percent_complete(start_height, height, chain_height);
+                        tracing::info!("Filter headers: {percent:.2}% ({height}/{chain_height})");
+                    }
+                    Some(Info::FilterAdded(height)) if height % 2_000 == 0 => {
+                        let percent = percent_complete(start_height, height, chain_height);
+                        tracing::info!("Filters: {percent:.2}% ({height}/{chain_height})");
+                    }
+                    Some(Info::FilterAdded(_)) => (),
+                    Some(info) => tracing::info!("{info}"),
+                    None => (),
                 }
             }
             warn = warning_subscriber.recv() => {
                 if let Some(warn) = warn {
-                    tracing::warn!("{warn}")
+                    tracing::warn!("{warn}");
                 }
             }
         }
@@ -44,17 +55,23 @@ async fn main() -> anyhow::Result<()> {
         .network(NETWORK)
         .create_wallet_no_persist()?;
 
-    let sync_config =
-        SyncConfig::wallet_recovery_sync(HashCheckpoint::from_genesis(NETWORK)).build();
+    let checkpoint = HashCheckpoint::from_genesis(NETWORK);
+    let start_height = checkpoint.height;
+    let sync_config = SyncConfig::wallet_recovery_sync(checkpoint).build();
 
     // The light client builder handles the logic of inserting the SPKs
     let client = Builder::new(NETWORK)
         .build_with_wallet(&wallet, sync_config)
         .unwrap();
     let (client, logging, mut update_subscriber) = client.subscribe();
-    tokio::task::spawn(
-        async move { traces(logging.info_subscriber, logging.warning_subscriber).await },
-    );
+    tokio::task::spawn(async move {
+        traces(
+            start_height,
+            logging.info_subscriber,
+            logging.warning_subscriber,
+        )
+        .await
+    });
     let client = client.start();
     let requester = client.requester();
 
@@ -76,4 +93,10 @@ async fn main() -> anyhow::Result<()> {
     let fee_filter = requester.broadcast_min_feerate().await.unwrap();
     tracing::info!("Broadcast minimum fee rate: {:#}", fee_filter);
     return Ok(());
+}
+
+fn percent_complete(start: u32, height: u32, tip: u32) -> f32 {
+    let total = tip.saturating_sub(start).max(1);
+    let done = height.saturating_sub(start).min(total);
+    done as f32 / total as f32 * 100.0
 }
