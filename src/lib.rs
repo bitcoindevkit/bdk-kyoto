@@ -57,7 +57,7 @@ pub use bip157::{
     BlockHash, ClientError, FeeRate, HashCheckpoint, Info, Node, RejectPayload, RejectReason,
     Requester, TrustedPeer, Warning, Wtxid,
 };
-use bip157::{Event, SyncUpdate};
+use bip157::{Event, EventReceiver, SyncUpdate};
 
 #[doc(inline)]
 pub use bip157::Receiver;
@@ -253,7 +253,7 @@ pub struct UpdateSubscriber<W: Wallets> {
     // request information from the client
     requester: Requester,
     // channel receiver
-    receiver: UnboundedReceiver<Event>,
+    receiver: EventReceiver,
     // a block that matched a filter and has not been applied yet
     pending_block: Option<BlockHash>,
     // scripts to check filters against, grown as blocks reveal new indices
@@ -268,7 +268,7 @@ pub struct UpdateSubscriber<W: Wallets> {
 impl<W: Wallets> UpdateSubscriber<W> {
     fn new(
         requester: Requester,
-        receiver: UnboundedReceiver<Event>,
+        receiver: EventReceiver,
         cp: CheckPoint,
         graph: IndexedTxGraph<ConfirmationBlockTime, KeychainTxOutIndex<KeychainKind>>,
     ) -> UpdateSubscriber<wallets::Single> {
@@ -287,7 +287,7 @@ impl<W: Wallets> UpdateSubscriber<W> {
 
     fn new_multiple(
         requester: Requester,
-        receiver: UnboundedReceiver<Event>,
+        receiver: EventReceiver,
         wallet_iter: impl Iterator<
             Item = (
                 DescriptorId,
