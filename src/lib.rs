@@ -255,7 +255,9 @@ pub struct UpdateSubscriber<W: Wallets> {
     // channel receiver
     receiver: EventReceiver,
     // a block that matched a filter and has not been applied yet
-    pending_block: Option<BlockHash>,
+    pending_block: Option<BlockId>,
+    emit_every: Option<u32>,
+    blocks_since_update: u32,
     // scripts to check filters against, grown as blocks reveal new indices
     spk_cache: HashSet<ScriptBuf>,
     // processes events for the wallet.
@@ -280,6 +282,8 @@ impl<W: Wallets> UpdateSubscriber<W> {
             single_update_builder: Some(update_builder),
             multiple_updates_builder: None,
             pending_block: None,
+            emit_every: None,
+            blocks_since_update: 0,
             spk_cache,
             _marker: core::marker::PhantomData,
         }
@@ -309,16 +313,21 @@ impl<W: Wallets> UpdateSubscriber<W> {
             single_update_builder: None,
             multiple_updates_builder: Some(update_map),
             pending_block: None,
+            emit_every: None,
+            blocks_since_update: 0,
             spk_cache,
             _marker: core::marker::PhantomData,
         }
     }
 
-    async fn sync(&mut self) -> Result<(), UpdateError> {
+    async fn sync(&mut self) -> Result<Option<u32>, UpdateError> {
         // A previous call was cancelled while fetching a block. Apply it before checking the
         // next filter, so that filter is checked against the right scripts.
-        if let Some(hash) = self.pending_block {
+        if let Some(BlockId { height, hash }) = self.pending_block {
             self.fetch_and_apply(hash).await?;
+            if self.scanned() {
+                return Ok(Some(height));
+            }
         }
         while let Some(message) = self.receiver.recv().await {
             match message {
@@ -327,8 +336,14 @@ impl<W: Wallets> UpdateSubscriber<W> {
                         let hash = filter.block_hash();
                         // The filter is already off the channel, so record the match before
                         // awaiting the block.
-                        self.pending_block = Some(hash);
+                        self.pending_block = Some(BlockId {
+                            height: filter.height(),
+                            hash,
+                        });
                         self.fetch_and_apply(hash).await?;
+                    }
+                    if self.scanned() {
+                        return Ok(Some(filter.height()));
                     }
                 }
                 Event::ChainUpdate(changeset) => {
@@ -344,7 +359,10 @@ impl<W: Wallets> UpdateSubscriber<W> {
                 Event::FiltersSynced(SyncUpdate {
                     tip: _,
                     recent_history: _,
-                }) => return Ok(()),
+                }) => {
+                    self.blocks_since_update = 0;
+                    return Ok(None);
+                }
             }
         }
         Err(UpdateError::NodeStopped)
@@ -382,15 +400,30 @@ impl<W: Wallets> UpdateSubscriber<W> {
         self.pending_block = None;
         Ok(())
     }
+
+    fn scanned(&mut self) -> bool {
+        self.blocks_since_update += 1;
+        if self
+            .emit_every
+            .is_some_and(|n| self.blocks_since_update >= n)
+        {
+            self.blocks_since_update = 0;
+            return true;
+        }
+        false
+    }
 }
 
 impl UpdateSubscriber<wallets::Single> {
     /// Return the most recent [`Update`] for a wallet once it has synced to the network's tip.
     /// This may take a significant portion of time during wallet recoveries or dormant wallets.
     /// Note that you may call this method in a loop as long as the node is running.
+    ///
+    /// If the client emits an update every `n` blocks, an [`Update`] that ends at the last block
+    /// scanned is also returned each time `n` blocks are scanned before the tip.
     pub async fn update(&mut self) -> Result<Update, UpdateError> {
-        self.sync().await?;
-        Ok(self.single_update_builder.as_mut().unwrap().finish())
+        let height = self.sync().await?;
+        Ok(self.single_update_builder.as_mut().unwrap().finish(height))
     }
 }
 
@@ -401,13 +434,16 @@ impl UpdateSubscriber<wallets::Multiple> {
     ///
     /// This may take a significant portion of time during wallet recoveries or dormant wallets.
     /// Note that you may call this method in a loop as long as the node is running.
+    ///
+    /// If the client emits updates every `n` blocks, updates that end at the last block scanned
+    /// are also returned each time `n` blocks are scanned before the tip.
     pub async fn updates(
         &mut self,
     ) -> Result<impl Iterator<Item = (DescriptorId, Update)>, UpdateError> {
-        self.sync().await?;
+        let height = self.sync().await?;
         let mut map = BTreeMap::new();
         for (id, builder) in self.multiple_updates_builder.as_mut().unwrap().iter_mut() {
-            map.insert(*id, builder.finish());
+            map.insert(*id, builder.finish(height));
         }
         Ok(map.into_iter())
     }
@@ -472,7 +508,7 @@ impl UpdateBuilder {
         self.graph.index.inner().all_spks().values()
     }
 
-    fn finish(&mut self) -> Update {
+    fn finish(&mut self, height: Option<u32>) -> Update {
         let tx_update = TxUpdate::from(self.graph.graph().clone());
         let graph = core::mem::take(&mut self.graph);
         let last_active_indices = graph.index.last_used_indices();
@@ -480,7 +516,7 @@ impl UpdateBuilder {
         Update {
             tx_update,
             last_active_indices,
-            chain: Some(self.cp.clone()),
+            chain: height.map_or(Some(self.cp.clone()), |height| self.cp.get(height)),
         }
     }
 }
