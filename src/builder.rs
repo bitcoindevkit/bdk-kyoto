@@ -95,6 +95,14 @@ pub trait BuilderExt {
         sync_config: SyncConfig<P>,
     ) -> Result<LightClient<Idle, crate::wallets::Single>, BuilderError>;
 
+    /// Sync a [`Wallet`] following a [`SyncConfig`], with further options set on the
+    /// [`WalletBuilder`].
+    fn wallet<P: SyncPolicyType>(
+        self,
+        wallet: &Wallet,
+        sync_config: SyncConfig<P>,
+    ) -> WalletBuilder<'_, P>;
+
     /// Sync multiple [`Wallet`]s with one node. Each wallet is added with its own
     /// [`SyncConfig`] by [`WalletsBuilder::add`].
     fn wallets<'a>(self) -> WalletsBuilder<'a>;
@@ -150,11 +158,54 @@ impl BuilderExt for Builder {
         Ok(client)
     }
 
+    fn wallet<P: SyncPolicyType>(
+        self,
+        wallet: &Wallet,
+        sync_config: SyncConfig<P>,
+    ) -> WalletBuilder<'_, P> {
+        WalletBuilder {
+            builder: self,
+            wallet,
+            sync_config,
+            emit_every: None,
+        }
+    }
+
     fn wallets<'a>(self) -> WalletsBuilder<'a> {
         WalletsBuilder {
             builder: self,
             wallets: Vec::new(),
+            emit_every: None,
         }
+    }
+}
+
+/// Build a [`LightClient`] that syncs a [`Wallet`] following a [`SyncConfig`].
+pub struct WalletBuilder<'a, P: SyncPolicyType> {
+    builder: Builder,
+    wallet: &'a Wallet,
+    sync_config: SyncConfig<P>,
+    emit_every: Option<u32>,
+}
+
+impl<P: SyncPolicyType> WalletBuilder<'_, P> {
+    /// Emit an [`Update`](crate::Update) each time `blocks` blocks are scanned before the tip,
+    /// ending at the last block scanned. A block is scanned once its filter is checked and, if it
+    /// matched, the block is applied. `blocks` is clamped to at least one.
+    pub fn emit_update_every_n_blocks(mut self, blocks: u32) -> Self {
+        self.emit_every = Some(blocks.max(1));
+        self
+    }
+
+    /// Attempt to build the node with scripts from the [`Wallet`].
+    pub fn build(self) -> Result<LightClient<Idle, crate::wallets::Single>, BuilderError> {
+        let mut client = self
+            .builder
+            .build_with_wallet(self.wallet, self.sync_config)?;
+        if let Some(update_subscriber) = client.update_subscriber.as_mut() {
+            update_subscriber.emit_every = self.emit_every;
+        }
+        Ok(client)
     }
 }
 
@@ -168,6 +219,7 @@ impl BuilderExt for Builder {
 pub struct WalletsBuilder<'a> {
     builder: Builder,
     wallets: Vec<(&'a Wallet, SyncPolicy)>,
+    emit_every: Option<u32>,
 }
 
 impl<'a> WalletsBuilder<'a> {
@@ -181,11 +233,20 @@ impl<'a> WalletsBuilder<'a> {
         self
     }
 
+    /// Emit updates each time `blocks` blocks are scanned before the tip, ending at the last
+    /// block scanned. A block is scanned once its filter is checked and, if it matched, the block
+    /// is applied. `blocks` is clamped to at least one.
+    pub fn emit_update_every_n_blocks(mut self, blocks: u32) -> Self {
+        self.emit_every = Some(blocks.max(1));
+        self
+    }
+
     /// Attempt to build the node with scripts from every added [`Wallet`].
     pub fn build(self) -> Result<LightClient<Idle, crate::wallets::Multiple>, BuilderError> {
         let WalletsBuilder {
             mut builder,
             wallets,
+            emit_every,
         } = self;
         if wallets.is_empty() {
             return Err(BuilderError::EmptyIterator);
@@ -228,11 +289,12 @@ impl<'a> WalletsBuilder<'a> {
                 IndexedTxGraph::new(wallet.spk_index().clone()),
             )
         });
-        let update_subscriber = UpdateSubscriber::<crate::wallets::Multiple>::new_multiple(
+        let mut update_subscriber = UpdateSubscriber::<crate::wallets::Multiple>::new_multiple(
             requester.clone(),
             event_rx,
             wallet_iter,
         );
+        update_subscriber.emit_every = emit_every;
         let client = LightClient::new(
             requester,
             LoggingSubscribers {

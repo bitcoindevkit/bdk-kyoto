@@ -666,3 +666,57 @@ async fn recovery_gap_limit_is_the_wallet_lookahead() -> anyhow::Result<()> {
     assert_eq!(balance, amount_for_index(10) + amount_for_index(30));
     Ok(())
 }
+
+#[tokio::test]
+async fn update_is_emitted_every_n_blocks() -> anyhow::Result<()> {
+    let env = testenv()?;
+    let miner = env
+        .rpc_client()
+        .get_new_address(None, None)?
+        .assume_checked();
+    let mut wallet = CreateParams::new(EXTERNAL_DESCRIPTOR, INTERNAL_DESCRIPTOR)
+        .network(Network::Regtest)
+        .create_wallet_no_persist()?;
+
+    env.mine_blocks(100, Some(miner.clone()))?;
+    let addr = wallet.peek_address(KeychainKind::External, 0).address;
+    let amt = Amount::from_btc(0.21)?;
+    let txid = env.send(&addr, amt)?;
+    env.mine_blocks(1, Some(miner.clone()))?;
+    env.mine_blocks(30, Some(miner))?;
+    wait_for_height(&env, 132).await?;
+
+    let peer = env.bitcoind.params.p2p_socket.unwrap();
+    let ip: IpAddr = (*peer.ip()).into();
+    let peer: TrustedPeer = (ip, Some(peer.port())).into();
+    let genesis = env.rpc_client().get_block_hash(0)?;
+    let client = Builder::new(Network::Regtest)
+        .add_peer(peer)
+        .required_peers(1)
+        .wallet(
+            &wallet,
+            SyncConfig::wallet_recovery_sync(HashCheckpoint::new(0, genesis)).build(),
+        )
+        .emit_update_every_n_blocks(25)
+        .build()?;
+    let (client, _, mut update_subscriber) = client.subscribe();
+    let client = client.start();
+
+    let mut tips = Vec::new();
+    while tips.last() != Some(&132) {
+        let update = update_subscriber.update().await?;
+        let tip = update.chain.as_ref().unwrap().height();
+        for (anchor, anchor_txid) in &update.tx_update.anchors {
+            assert_eq!(*anchor_txid, txid);
+            assert!(anchor.block_id.height <= tip);
+        }
+        wallet.apply_update(update)?;
+        assert_eq!(wallet.latest_checkpoint().height(), tip);
+        tips.push(tip);
+    }
+    assert_eq!(tips, vec![25, 50, 75, 100, 125, 132]);
+    assert_eq!(wallet.balance().total(), amt);
+
+    client.requester().shutdown()?;
+    Ok(())
+}
